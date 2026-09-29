@@ -7,3 +7,28 @@
 .env.*
 *.pem
 service-account*.json
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+dist/
+*.egg-info/
+.pytest_cache/
+.ruff_cache/
+
+# Local data and reports
+data/
+evals/reports/*
+!evals/reports/.gitkeep
+load/reports/*
+!load/reports/.gitkeep
+
+# OS / editors
+.DS_Store
+Thumbs.db
+*.tmp
+*.swp
+.vscode/
+.idea/

@@ -1,0 +1,88 @@
+# All performance and cost parameters (constitution Principle VI, research R16).
+# Override any key with an environment variable: LC__<GROUP>__<KEY>, e.g. LC__LLM__REPLY_MODEL=...
+# Secrets are NOT here — they come from environment variables (see .env.example).
+
+llm:
+  provider: anthropic                 # R2; also: fake, stub
+  extraction_model: claude-haiku-4-5  # small model is enough for structured extraction (R15: ~-25% cost)
+  reply_model: claude-sonnet-5-5      # replies are what tutees judge
+  combined_call: false                # one call per turn saves ~35% but replies before validation — experiment only
+  context_messages: 6                 # state carries the facts; ~-35-40% input tokens vs 20
+  max_output_tokens:
+    extraction: 400                   # bounded cost and latency
+    reply: 200
+  temperature:
+    extraction: 0.0                   # deterministic extraction
+    reply: 0.7                        # natural replies
+  prompt_cache: true                  # cache system prompt + tool schema
+  timeout_seconds: 8                  # caps a stuck call; typical calls finish in 1-3 s
+  max_retries: 2                      # with exponential backoff
+  max_concurrent_calls: 20            # protects rate limits during bursts
+  skip_for_deterministic_turns: true  # button taps, greeting/consent, summary, closing use fixed texts
+  max_regenerations: 1                # then fall back to the fixed text for the instruction
+  stub_delay_seconds: [1.0, 3.0]      # StubLLMClient delay range (load tests)
+
+conversation:
+  max_questions_per_message: 2        # FR-001
+  max_words_per_message: 60           # FR-001
+  debounce_ms: 2000                   # R8: bursts become one turn
+  misunderstand_handoff_threshold: 3  # FR-023
+  stalled_after_hours: 24             # FR-019
+  handoff_expiry_hours: 72            # R4
+  max_turns_per_contact_per_hour: 30  # FR-030: well above a real chat (~10 turns)
+  max_turns_per_contact_per_day: 100  # FR-030: caps worst-case cost per number
+  off_topic_max_sentences: 1          # FR-007
+
+channel:
+  provider: whatsapp_cloud            # R3; also: fake
+  send_timeout_seconds: 5             # contracts/whatsapp-webhook.md
+  max_retries: 3
+
+leads:
+  repository: google_sheet            # R5; also: in_memory
+  outbox_interval_seconds: 60         # R6/R9
+  max_backoff_seconds: 300            # R5
+
+queue:
+  provider: inprocess                 # R14 step 4 later: redis/sqs
+lock:
+  provider: memory
+clock:
+  provider: system                    # also: frozen (tests)
+
+ops:
+  timezone: Asia/Kolkata              # intent
+  hours_start: "10:00"
+  hours_end: "17:00"
+
+retention:
+  transcript_days: 90                 # intent / FR-026
+  lead_days: 365
+  handoff_days: 90
+  usage_days: 90                      # UsageEvent rows (IDs and token counts only)
+
+jobs:
+  stalled_every_minutes: 15           # R9
+  handoff_sync_every_minutes: 5
+  retention_cron: "0 3 * * *"
+
+costs:
+  rates_file: config/rates.yaml       # R15
+  usd_to_inr: 88
+
+evals:
+  repeats: 3                          # R10: replies vary run to run
+  pass_threshold: 0.95
+  tutee_model: claude-haiku-4-5
+  pr_subset: []                       # filled with 8 key scenarios in the polish phase (T120)
+
+load:
+  burst:
+    concurrent_tutees: 30             # R13 assumed peak
+    peak_msgs_per_second: 5
+    minutes: 10
+  capacity:
+    max_tutees: 100
+  soak:
+    msgs_per_second: 1
+    hours: 3

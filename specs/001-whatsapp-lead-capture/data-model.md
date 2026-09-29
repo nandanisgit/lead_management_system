@@ -80,6 +80,18 @@ Confirmed leads waiting to be (or already) written to the sheet.
 | `last_error` | text, nullable | error class only, no personal data |
 | `created_at`, `synced_at` | timestamp | |
 
+### UsageEvent
+Cost tracking (research R15). IDs and counts only — no personal data.
+
+| Field | Type | Rules |
+|---|---|---|
+| `id` | integer PK | |
+| `conversation_id` | FK → Conversation, nullable | |
+| `kind` | enum | `extract` / `reply` / `message_out` |
+| `model` | text, nullable | model name for `extract` / `reply` |
+| `input_tokens`, `output_tokens`, `cache_read_tokens`, `cache_write_tokens` | integer | from `TokenUsage` |
+| `created_at` | timestamp | deleted after `retention.usage_days` (default 90) |
+
 ## Value object: Requirement
 
 The validated requirement stored in `Conversation.collected` and copied into a
@@ -151,6 +163,7 @@ any active state ──not interested / out of area declined / STOP──► clo
 | Data | Kept for | Removed by |
 |---|---|---|
 | `Message` rows | 90 days from `created_at` | daily job |
+| `UsageEvent` rows | `retention.usage_days` (default 90) | daily job |
 | `Conversation`, `LeadOutbox`, sheet `Leads` row | 1 year from creation | daily job (sheet row matched by Lead ID) |
 | `Handoffs` rows | 90 days | daily job |
 | `Contact` | until it has no conversations left | daily job |

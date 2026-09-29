@@ -1,0 +1,48 @@
+# Allowed values (business rules). Changing these is a product decision — see intent.md.
+grade_levels: [Class 1, Class 2, Class 3, Class 4, Class 5, Class 6, Class 7, Class 8, Class 9,
+               Class 10, Class 11, Class 12, Undergraduate, Postgraduate, Adult]
+school_grade_levels: [Class 1, Class 2, Class 3, Class 4, Class 5, Class 6, Class 7, Class 8,
+                      Class 9, Class 10, Class 11, Class 12]
+minor_grade_levels: [Class 1, Class 2, Class 3, Class 4, Class 5, Class 6, Class 7, Class 8,
+                     Class 9, Class 10, Class 11, Class 12]   # FR-029
+boards: [CBSE, ICSE, State, IB, IGCSE]
+non_school_boards: [University, N/A]
+subjects: [Maths, Science, Physics, Chemistry, Biology, English, Hindi, Sanskrit, French,
+           Social Science, History, Geography, Economics, Accountancy, Business Studies,
+           Computer Science, Coding, EVS, Statistics]
+subject_aliases:
+  math: Maths
+  mathematics: Maths
+  sst: Social Science
+  social studies: Social Science
+  cs: Computer Science
+  computer: Computer Science
+  computers: Computer Science
+  bio: Biology
+  chem: Chemistry
+  phy: Physics
+  accounts: Accountancy
+  eco: Economics
+  bst: Business Studies
+  programming: Coding
+cities: [Delhi, Noida, Greater Noida, Gurugram, Ghaziabad, Faridabad]   # home tuition (Delhi/NCR)
+city_aliases:
+  new delhi: Delhi
+  gurgaon: Gurugram
+  gr noida: Greater Noida
+  greater noida west: Greater Noida
+# Approximate NCR PIN ranges (inclusive). Review with operations before launch.
+ncr_pin_ranges:
+  - [110001, 110099]   # Delhi
+  - [201001, 201019]   # Ghaziabad
+  - [201301, 201318]   # Noida / Greater Noida
+  - [122001, 122018]   # Gurugram
+  - [122050, 122052]   # Gurugram
+  - [121001, 121013]   # Faridabad
+modes: [online, home, either]
+budget_units: [per_hour, per_month]
+relationships: [parent, student, other]
+guardian_relationships: [mother, father, guardian, other]
+goals: [Board exam prep, Concept clarity, Homework help, Competitive exam (JEE),
+        Competitive exam (NEET), Olympiad, Spoken English, Other]
+lead_statuses: [NEW, IN_REVIEW, TUTOR_SEARCH, MATCHED, CLOSED]
