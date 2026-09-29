@@ -1,0 +1,9 @@
+# Local Claude Code settings and credentials — never commit
+.claude/settings.local.json
+.claude/*.local.*
+
+# Environment and secrets
+.env
+.env.*
+*.pem
+service-account*.json

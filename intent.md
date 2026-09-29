@@ -1,5 +1,7 @@
 # Intent: WhatsApp Tutor-Lead Capture
 
+**Status:** Draft · **Stage:** 0 — Intent · **Last updated:** 2026-09-29
+
 > This file records **why** this system exists and **what "done" means**.
 > It is the source of truth for humans and AI coding agents. When a task conflicts
 > with this file, stop and ask instead of guessing.
@@ -272,6 +274,3 @@ operational DB is a native Google Sheet on Google Drive for now.
 - Tie pull requests to a goal ID (e.g. `G3: multi-field extraction from one message`).
 - If a requirement is unclear, add it to **Open questions** instead of inventing an answer.
 
----
-
-_Status: Draft · Last updated: 2026-09-29_
