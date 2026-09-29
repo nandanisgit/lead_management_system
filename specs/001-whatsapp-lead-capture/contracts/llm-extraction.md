@@ -3,7 +3,7 @@
 The engine reaches the model only through the `LLMClient` interface
 (`extract`, `write_reply`; research R16). `AnthropicLLMClient` implements it
 with the tool below; another provider's adapter must return the same
-`ExtractionResult`. Models, token limits, context size and temperatures come
+`ExtractionResult`. Models, token limits and context size come
 from `config/settings.yaml` (`llm.*`). Turns that code can answer itself are
 skipped when `llm.skip_for_deterministic_turns` is on.
 

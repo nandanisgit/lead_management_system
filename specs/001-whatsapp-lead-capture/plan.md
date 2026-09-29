@@ -31,7 +31,7 @@ cost optimisations cut model cost by ≈ 70% (research R15/R16).
 
 **Language/Version**: Python 3.12
 
-**Primary Dependencies**: FastAPI + Uvicorn, Pydantic v2, SQLAlchemy 2 + Alembic, `anthropic` SDK, `google-api-python-client` + `google-auth`, `httpx` (WhatsApp Cloud API), APScheduler, Typer (CLI)
+**Primary Dependencies**: FastAPI + Uvicorn, Pydantic v2, SQLAlchemy 2 + Alembic, `anthropic` SDK, `google-auth` (Sheets REST API v4 over `httpx`), `httpx` (WhatsApp Cloud API), APScheduler, Typer (CLI)
 
 **Storage**: SQLite (WAL) for the bot working store; native Google Sheet as the operational lead register
 

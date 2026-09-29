@@ -1,0 +1,3 @@
+{"object": "whatsapp_business_account", "entry": [{"id": "WABA", "changes": [{"field": "messages", "value": {
+  "messaging_product": "whatsapp", "metadata": {"display_phone_number": "911100000000", "phone_number_id": "PNID"},
+  "statuses": [{"id": "wamid.OUT1", "status": "delivered", "timestamp": "1790700300", "recipient_id": "919999900001"}]}}]}]}

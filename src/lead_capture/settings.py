@@ -25,11 +25,6 @@ class _Tokens(BaseModel):
     reply: PositiveInt
 
 
-class _Temps(BaseModel):
-    extraction: float = Field(ge=0, le=1)
-    reply: float = Field(ge=0, le=1)
-
-
 class LLMSettings(BaseModel):
     provider: Literal["anthropic", "fake", "stub"]
     extraction_model: str
@@ -37,7 +32,6 @@ class LLMSettings(BaseModel):
     combined_call: bool
     context_messages: PositiveInt
     max_output_tokens: _Tokens
-    temperature: _Temps
     prompt_cache: bool
     timeout_seconds: PositiveFloat
     max_retries: int = Field(ge=0)
@@ -63,12 +57,14 @@ class ChannelSettings(BaseModel):
     provider: Literal["whatsapp_cloud", "fake"]
     send_timeout_seconds: PositiveFloat
     max_retries: int = Field(ge=0)
+    retry_backoff_seconds: float = Field(ge=0)
 
 
 class LeadsSettings(BaseModel):
     repository: Literal["google_sheet", "in_memory"]
     outbox_interval_seconds: PositiveInt
     max_backoff_seconds: PositiveInt
+    retry_base_seconds: PositiveFloat
 
 
 class ProviderSettings(BaseModel):

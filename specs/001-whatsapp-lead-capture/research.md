@@ -452,6 +452,10 @@ Rules:
 
 ### Configurable parameters
 
+Note (build, 30 Sep 2026): the Anthropic Python SDK in use (1.9.0) no longer accepts a
+`temperature` parameter on `messages.create`, so the planned `llm.temperature.*` settings were
+removed.
+
 All live in `config/settings.yaml`, validated by a Pydantic settings model at
 start-up (the service refuses to start on invalid values). Any key can be
 overridden by an environment variable (`LC__LLM__REPLY_MODEL=…`). Eval and
@@ -465,7 +469,6 @@ load-test reports print the effective settings.
 | | `llm.combined_call` | `false` | one call per turn saves ≈ 35% but writes the reply before validation — experiment only |
 | | `llm.context_messages` | `6` | state carries the facts; ≈ −35–40% input tokens vs 20 |
 | | `llm.max_output_tokens.extraction` / `.reply` | `400` / `200` | bounded cost and latency |
-| | `llm.temperature.extraction` / `.reply` | `0` / `0.7` | deterministic extraction, natural replies |
 | | `llm.prompt_cache` | `true` | system prompt and tool schema cached |
 | | `llm.timeout_seconds` | `8` | caps a stuck call; typical calls finish in 1–3 s, so the 5 s p95 target is unaffected |
 | | `llm.max_retries` | `2` | with exponential backoff |
@@ -482,10 +485,10 @@ load-test reports print the effective settings.
 | | `conversation.max_turns_per_contact_per_day` | `100` | FR-030; caps worst-case model + WhatsApp cost per number |
 | | `conversation.off_topic_max_sentences` | `1` | FR-007 |
 | **Channel** | `channel.provider` | `whatsapp_cloud` | R3 |
-| | `channel.send_timeout_seconds` / `channel.max_retries` | `5` / `3` | contract `whatsapp-webhook.md` |
+| | `channel.send_timeout_seconds` / `channel.max_retries` / `channel.retry_backoff_seconds` | `5` / `3` / `0.5` | contract `whatsapp-webhook.md` |
 | **Leads** | `leads.repository` | `google_sheet` | R5 |
 | | `leads.outbox_interval_seconds` | `60` | R6/R9 |
-| | `leads.max_backoff_seconds` | `300` | R5 |
+| | `leads.max_backoff_seconds` / `leads.retry_base_seconds` | `300` / `5` | R5 |
 | **Operations** | `ops.timezone` / `ops.hours_start` / `ops.hours_end` | `Asia/Kolkata` / `10:00` / `17:00` | intent |
 | **Retention** | `retention.transcript_days` / `retention.lead_days` / `retention.handoff_days` | `90` / `365` / `90` | intent / FR-026 |
 | **Jobs** | `jobs.stalled_every_minutes` / `jobs.handoff_sync_every_minutes` / `jobs.retention_cron` | `15` / `5` / `0 3 * * *` | R9 |
