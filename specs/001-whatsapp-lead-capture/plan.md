@@ -19,7 +19,12 @@ an eval suite in which a simulated tutee answers from known facts, scored
 against the spec's success criteria; latency and exactly-once targets are
 verified by load tests (capacity, burst, soak). The design keeps seams
 (`LeadRepository`, `TurnQueue`, `ConversationLock`, SQLAlchemy) so it can scale
-out later without rewriting the conversation logic.
+out later without rewriting the conversation logic. The language model and the
+messaging app sit behind `LLMClient` and `MessagingChannel` interfaces, and
+every performance and cost parameter (models per call, context size, which
+turns use the model, timeouts, retries, concurrency, thresholds, schedules,
+retention, rates) is read from `config/settings.yaml` (research R16). Default
+cost optimisations cut model cost by ≈ 70% (research R15/R16).
 (Decisions: [research.md](research.md).)
 
 ## Technical Context
@@ -40,7 +45,9 @@ out later without rewriting the conversation logic.
 
 **Constraints**: WhatsApp 24-hour window and template rules; Sheets API quotas; no personal data in logs; English/Hindi only; home tuition Delhi/NCR only; ops hours 10 AM–5 PM IST daily
 
-**Cost (estimate, research R15)**: ≈ ₹13–14 per completed lead at 50–300 conversations/day — Claude ≈ 80–85%, WhatsApp ≈ 13% (service messages billable from 1 Oct 2026), hosting the rest
+**Cost (estimate, research R15)**: ≈ ₹5 per completed lead with the default optimisations in R16 (≈ ₹13.5 without them); service messages on WhatsApp billable from 1 Oct 2026
+
+**Configuration**: all performance and cost parameters in `config/settings.yaml` (Pydantic-validated, env-overridable); vendors selected by name via adapter registry (research R16)
 
 **Scale/Scope**: up to a few hundred conversations per day; ≤ ~50,000 lead rows per year; single instance. Assumed peak for load testing: 30 tutees chatting at once and 5 inbound messages/second for 10 minutes (research R13). Scaling path beyond v1: research R14.
 
@@ -54,6 +61,7 @@ out later without rewriting the conversation logic.
 | II. Validated data only | Model output is a proposal via `record_requirements`; the `Requirement` Pydantic model validates against `config/lists.yaml`; only `confirming → completed` creates an outbox row; sheet access only via `LeadRepository`; append-only A–Z, never AA–AC. | ✅ | ✅ |
 | III. Test-first, eval-backed | pytest for deterministic code with fakes; simulated-tutee eval suite with checks mapped to SC-001/002/003/008; load profiles verify SC-005/006/007 before release; CI gates on tests and evals. | ✅ | ✅ |
 | IV. Privacy and consent | Consent before collection (`awaiting_consent` state); retention jobs 90 days / 1 year; deletion on request; logs carry IDs only; secrets via env; service account scoped to one sheet. | ✅ | ✅ |
+| VI. Configurable and swappable | Engine depends only on `LLMClient`, `MessagingChannel`, `LeadRepository`, `TurnQueue`, `ConversationLock`, `Clock`; vendor SDKs only in `adapters/`; every tunable number in `config/settings.yaml`; eval/load reports record effective settings. | ✅ | ✅ |
 | V. Small, reversible steps | One service, one DB file, no external queue; outbox and per-number locks give idempotency; dedupe on `wa_message_id` and Lead ID. | ✅ | ✅ (one justified deviation below) |
 
 **Result**: PASS. One item recorded under Complexity Tracking.
@@ -81,45 +89,58 @@ specs/001-whatsapp-lead-capture/
 
 ```text
 src/lead_capture/
-├── app.py                  # FastAPI app, routes wiring, startup checks
-├── config.py               # Settings from environment
+├── app.py                  # FastAPI app; mounts /webhooks/{channel}, /healthz
+├── settings.py             # Pydantic settings: config/settings.yaml + env overrides
+├── registry.py             # Builds adapters by name from settings
 ├── cli.py                  # Typer CLI: chat, eval, load, costs, check-sheet, sync-lists, replay, jobs
+├── ports/                  # Interfaces + normalised types (no vendor imports)
+│   ├── llm.py              # LLMClient, ExtractionResult, TokenUsage
+│   ├── channel.py          # MessagingChannel, InboundMessage, OutboundMessage, Choice, Capabilities
+│   ├── leads.py            # LeadRepository, LeadRow, HandoffRow, errors
+│   ├── queue.py            # TurnQueue
+│   ├── locks.py            # ConversationLock
+│   └── clock.py            # Clock
+├── adapters/               # The only place vendor SDKs are imported
+│   ├── llm/
+│   │   ├── anthropic.py    # AnthropicLLMClient
+│   │   ├── fake.py         # FakeLLMClient (scripted)
+│   │   └── stub.py         # StubLLMClient (delay only, load tests)
+│   ├── channels/
+│   │   ├── whatsapp_cloud/ # signature.py, parser.py, sender.py → WhatsAppCloudChannel
+│   │   └── fake.py         # FakeChannel
+│   ├── leads/
+│   │   ├── google_sheet.py # GoogleSheetLeadRepository
+│   │   └── in_memory.py    # InMemoryLeadRepository
+│   ├── queue_inprocess.py  # asyncio TurnQueue
+│   ├── locks_memory.py     # in-memory ConversationLock
+│   └── clock.py            # SystemClock, FrozenClock
 ├── domain/
 │   ├── requirement.py      # Requirement model + validators
 │   ├── lists.py            # Loads config/lists.yaml
 │   ├── ids.py              # Lead / handoff ID generation
-│   └── hours.py            # IST ops-hours logic for closing messages
-├── webhook/
-│   ├── routes.py           # GET/POST /webhooks/whatsapp, /healthz
-│   ├── signature.py        # X-Hub-Signature-256 check
-│   └── parser.py           # Payload → inbound events
-├── whatsapp/
-│   └── sender.py           # WhatsAppSender (Cloud API) + FakeSender
+│   └── hours.py            # Ops-hours logic for closing messages
 ├── conversation/
 │   ├── engine.py           # One turn: load → extract → validate → decide → reply
 │   ├── states.py           # Lifecycle state machine
 │   ├── planner.py          # Missing fields → next instruction
-│   ├── llm.py              # Claude client: extraction + reply calls
+│   ├── fixed_texts.py      # EN/HI texts for deterministic turns (no model call)
 │   ├── guards.py           # Question/word/currency/language checks
-│   ├── dispatcher.py       # Debounce, pulls turns from TurnQueue
-│   ├── turn_queue.py       # TurnQueue interface + in-process asyncio impl
-│   └── locks.py            # ConversationLock interface + in-memory impl
+│   └── dispatcher.py       # Debounce, pulls turns from TurnQueue
 ├── store/
 │   ├── db.py               # Engine/session
 │   ├── models.py           # Contact, Conversation, Message, LeadOutbox
 │   └── queries.py
-├── sheet/
-│   ├── repository.py       # LeadRepository protocol + errors
-│   ├── google_sheet.py     # GoogleSheetLeadRepository
-│   └── in_memory.py        # InMemoryLeadRepository
+├── costs/
+│   └── report.py           # Messages/tokens → cost per conversation and lead
 └── jobs/
-    ├── scheduler.py        # APScheduler setup (Asia/Kolkata)
-    ├── outbox.py           # Drain outbox → sheet
-    ├── stalled.py          # 24 h → stalled
+    ├── scheduler.py        # APScheduler setup (time zone from settings)
+    ├── outbox.py           # Drain outbox → LeadRepository
+    ├── stalled.py          # stalled_after_hours → stalled
     ├── handoffs.py         # Sync Resolved handoffs
-    └── retention.py        # 90-day / 1-year deletion
+    └── retention.py        # retention.* deletion
 
 prompts/assistant.md        # System prompt (tone, language, rules)
+config/settings.yaml        # All performance/cost parameters + adapter choice (research R16)
 config/lists.yaml           # Allowed values
 config/rates.yaml           # WhatsApp and model rates for cost reports (research R15)
 migrations/                 # Alembic
@@ -134,7 +155,7 @@ load/
 └── reports/
 tests/
 ├── unit/                   # domain, planner, guards, states, ids, hours
-├── contract/               # webhook payloads, sheet contract, extraction schema
+├── contract/               # shared suites per interface: every adapter (real and fake) must pass
 └── integration/            # full turns with fakes; outbox; retention
 Dockerfile
 pyproject.toml
@@ -147,7 +168,7 @@ service with a CLI. No frontend: the operations team works in the Google Sheet.
 
 ## Implementation Phases (input for /speckit-tasks)
 
-1. **Foundation** — project skeleton, settings, SQLite models + migrations, `config/lists.yaml`, `Requirement` validation, IDs, ops-hours logic, CI.
+1. **Foundation** — project skeleton, `config/settings.yaml` + validated settings model, `ports/` interfaces with fake adapters and shared contract tests, adapter registry, SQLite models + migrations, `config/lists.yaml`, `Requirement` validation, IDs, ops-hours logic, CI.
 2. **US1 core (MVP)** — webhook verify/receive/dedupe, sender, extraction + reply calls, state machine and planner, summary/confirmation, outbox + `GoogleSheetLeadRepository`, closing message by time of day, local `chat` CLI, first eval scenarios.
 3. **US2** — resume and recap, stalled job, multiple students per number, duplicate-lead prevention.
 4. **US3** — out-of-area flow, unsupported language, not interested / STOP.

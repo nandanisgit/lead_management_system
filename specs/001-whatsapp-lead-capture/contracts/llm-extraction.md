@@ -1,6 +1,13 @@
 # Contract: Language-Model Extraction Tool
 
-Each turn, the conversation engine calls the model once with a forced tool call
+The engine reaches the model only through the `LLMClient` interface
+(`extract`, `write_reply`; research R16). `AnthropicLLMClient` implements it
+with the tool below; another provider's adapter must return the same
+`ExtractionResult`. Models, token limits, context size and temperatures come
+from `config/settings.yaml` (`llm.*`). Turns that code can answer itself are
+skipped when `llm.skip_for_deterministic_turns` is on.
+
+Each turn that needs the model, the engine requests a forced tool call
 to `record_requirements`. The tool input is a **proposal only**: every value is
 re-validated by code (the `Requirement` model in
 [data-model.md](../data-model.md)) before it is stored. Unknown or invalid
@@ -70,7 +77,7 @@ A second call (no tools) writes the tutee-facing message. Its input is built by
 code and includes:
 
 - the system prompt (`prompts/assistant.md`: tone, language, rules from intent §7);
-- the recent transcript (last 20 messages);
+- the recent transcript (last `llm.context_messages` messages, default 6);
 - the validated state and the list of still-missing required fields;
 - one **instruction** chosen by code, e.g. `ASK: grade_level, board`,
   `SUMMARISE_AND_CONFIRM`, `OFFER_ONLINE_OUT_OF_AREA`, `CLOSE_COMPLETED(today)`,
@@ -80,7 +87,7 @@ code and includes:
 
 | Check | On failure |
 |---|---|
-| ≤ 2 question marks and ≤ ~60 words | regenerate once, then use the fixed template for the instruction |
+| ≤ `conversation.max_questions_per_message` questions and ≤ `conversation.max_words_per_message` words | regenerate up to `llm.max_regenerations` times, then use the fixed template for the instruction |
 | no ₹/Rs/number-with-currency not already stated by the tutee | same |
 | reply language matches `Contact.language` | same |
 | summary replies list exactly the validated values | build the summary from code, let the model phrase only the lead-in |

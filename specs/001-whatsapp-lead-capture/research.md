@@ -34,6 +34,14 @@ be re-checked against current documentation during the Build stage.
 - **Guardrails in code**: reject replies with more than two questions or over
   ~60 words (regenerate once, then fall back to a template phrase); reject any
   reply containing a currency amount the tutee did not state (FR-006).
+- **Cost-saving defaults** (details and config keys in R16): turns that code
+  can answer on its own (button taps, greeting and consent, summary, closing)
+  use fixed English/Hindi texts with no model call; each call gets the
+  validated state plus only the last few messages; extraction runs on a
+  smaller model. All three are configuration switches.
+- **Provider independence**: the engine calls an `LLMClient` interface, not
+  the Anthropic SDK directly (R16), so another model or provider can be
+  swapped in via configuration.
 - **Alternatives considered**: a pure rules/form bot (fails G1 and G3); letting
   the model drive the whole flow and emit the final lead (violates Principle
   II); a cheaper model for extraction only (possible later optimisation, noted
@@ -380,6 +388,15 @@ The language model is about 80–85% of running cost; WhatsApp about 13%.
 - `/healthz` stays personal-data-free; a `lead-capture costs --month YYYY-MM` CLI command summarises messages, tokens and estimated cost per conversation and per lead, using rates from configuration (`config/rates.yaml`) so they can be updated when Meta or Anthropic change prices.
 - Eval and load-test reports include token usage and estimated cost per run.
 
+### After the R16 optimisations
+
+With the default optimisations 1–3 in R16 (no model call on deterministic
+turns, trimmed context, Haiku for extraction), model cost falls by ≈ 70%:
+≈ ₹2.5 per completed conversation, ≈ ₹3.3 per lead, ≈ ₹9,000/month at 150
+conversations a day. Total cost per completed lead, WhatsApp and hosting
+included, falls from ≈ ₹13.5 to **≈ ₹5**. These remain estimates until
+measured with `lead-capture costs`.
+
 ### Sources
 
 - Meta — Pricing on the WhatsApp Business Platform: https://developers.facebook.com/documentation/business-messaging/whatsapp/pricing
@@ -388,3 +405,100 @@ The language model is about 80–85% of running cost; WhatsApp about 13%.
 - Wati — WhatsApp service message pricing changes (2026): https://www.wati.io/en/blog/whatsapp-service-message-pricing/
 - SendPulse — WhatsApp service message pricing changes, Oct 2026: https://sendpulse.com/blog/whatsapp-service-message-pricing
 - Anthropic — Claude pricing: https://platform.claude.com/docs/en/about-claude/pricing
+
+## R16. Swappable services and configurable parameters
+
+Implements constitution Principle VI for this feature. Goal: changing the
+language model, the messaging app, the lead store, or any performance/cost
+setting is a configuration change or a new adapter — never an edit to the
+conversation engine.
+
+### Interfaces (ports) and adapters
+
+| Interface | Responsibility | v1 adapter | Test adapter | Later options |
+|---|---|---|---|---|
+| `LLMClient` | `extract(turn) -> ExtractionResult`; `write_reply(turn, instruction) -> str`; reports token usage | `AnthropicLLMClient` | `FakeLLMClient` (scripted), `StubLLMClient` (delay only, for load tests) | Claude via AWS Bedrock / Google Vertex; another provider |
+| `MessagingChannel` | parse and verify inbound webhooks into normalised `InboundMessage`s; `send_text`, `send_choices` (buttons/list), `send_template`; declares `capabilities` (max buttons, template rules, service window) | `WhatsAppCloudChannel` | `FakeChannel` | Telegram, Instagram DM, web chat, SMS; a WhatsApp BSP |
+| `LeadRepository` | append/find/delete leads, handoff rows, lists sync (contract in `contracts/lead-sheet.md`) | `GoogleSheetLeadRepository` | `InMemoryLeadRepository` | PostgreSQL, Zoho / HubSpot / Salesforce CRM |
+| `TurnQueue` | deliver turns in order per contact | in-process asyncio | same | Redis Streams, SQS FIFO, Cloud Tasks |
+| `ConversationLock` | one turn at a time per contact | in-memory | same | PostgreSQL advisory lock, Redis |
+| `Clock` | current time in the configured time zone | system clock | frozen clock | — |
+
+Rules:
+
+- The conversation engine, planner, guards and domain code import only these
+  interfaces and the normalised types (`InboundMessage`, `OutboundMessage`,
+  `Choice`, `ExtractionResult`, `TokenUsage`). No vendor SDK imports outside
+  `adapters/`.
+- The engine asks the channel what it can do (`capabilities`) instead of
+  assuming WhatsApp — e.g. a channel without buttons gets numbered options, a
+  channel without a 24-hour window never needs templates.
+- Adapters are chosen by name in `config/settings.yaml`
+  (`llm.provider`, `channel.provider`, `leads.repository`, …) through a small
+  registry; secrets stay in environment variables.
+- Webhooks are mounted per channel at `/webhooks/{channel}` so a second
+  channel can run alongside WhatsApp.
+- Each adapter passes a shared contract test suite for its interface
+  (`tests/contract/`), so a new adapter is accepted when it passes the same
+  tests as the old one.
+
+### Configurable parameters
+
+All live in `config/settings.yaml`, validated by a Pydantic settings model at
+start-up (the service refuses to start on invalid values). Any key can be
+overridden by an environment variable (`LC__LLM__REPLY_MODEL=…`). Eval and
+load-test reports print the effective settings.
+
+| Group | Key | Default | Why this default |
+|---|---|---|---|
+| **LLM** | `llm.provider` | `anthropic` | R2 |
+| | `llm.extraction_model` | `claude-haiku-4-5` | structured extraction works well on a small model; ≈ −25% cost (R15) |
+| | `llm.reply_model` | `claude-sonnet-5-5` | replies are what tutees judge |
+| | `llm.combined_call` | `false` | one call per turn saves ≈ 35% but writes the reply before validation — experiment only |
+| | `llm.context_messages` | `6` | state carries the facts; ≈ −35–40% input tokens vs 20 |
+| | `llm.max_output_tokens.extraction` / `.reply` | `400` / `200` | bounded cost and latency |
+| | `llm.temperature.extraction` / `.reply` | `0` / `0.7` | deterministic extraction, natural replies |
+| | `llm.prompt_cache` | `true` | system prompt and tool schema cached |
+| | `llm.timeout_seconds` | `8` | caps a stuck call; typical calls finish in 1–3 s, so the 5 s p95 target is unaffected |
+| | `llm.max_retries` | `2` | with exponential backoff |
+| | `llm.max_concurrent_calls` | `20` | protects rate limits during bursts |
+| | `llm.skip_for_deterministic_turns` | `true` | button taps, greeting/consent, summary, closing use fixed texts; ≈ −30–35% calls |
+| | `llm.max_regenerations` | `1` | then fall back to the fixed text for that instruction |
+| **Conversation** | `conversation.max_questions_per_message` | `2` | FR-001 |
+| | `conversation.max_words_per_message` | `60` | FR-001 |
+| | `conversation.debounce_ms` | `2000` | R8 |
+| | `conversation.misunderstand_handoff_threshold` | `3` | FR-023 |
+| | `conversation.stalled_after_hours` | `24` | FR-019 |
+| | `conversation.handoff_expiry_hours` | `72` | R4 |
+| **Channel** | `channel.provider` | `whatsapp_cloud` | R3 |
+| | `channel.send_timeout_seconds` / `channel.max_retries` | `5` / `3` | contract `whatsapp-webhook.md` |
+| **Leads** | `leads.repository` | `google_sheet` | R5 |
+| | `leads.outbox_interval_seconds` | `60` | R6/R9 |
+| | `leads.max_backoff_seconds` | `300` | R5 |
+| **Operations** | `ops.timezone` / `ops.hours_start` / `ops.hours_end` | `Asia/Kolkata` / `10:00` / `17:00` | intent |
+| **Retention** | `retention.transcript_days` / `retention.lead_days` / `retention.handoff_days` | `90` / `365` / `90` | intent / FR-026 |
+| **Jobs** | `jobs.stalled_every_minutes` / `jobs.handoff_sync_every_minutes` / `jobs.retention_cron` | `15` / `5` / `0 3 * * *` | R9 |
+| **Costs** | `costs.rates_file` / `costs.usd_to_inr` | `config/rates.yaml` / `88` | R15 |
+| **Evals** | `evals.repeats` / `evals.pass_threshold` / `evals.tutee_model` / `evals.pr_subset` | `3` / `0.95` / `claude-haiku-4-5` / 8 key scenarios, 1 run each | R10; full suite nightly and before release |
+| **Load** | `load.burst.concurrent_tutees` / `load.burst.peak_msgs_per_second` / `load.burst.minutes` | `30` / `5` / `10` | R13 |
+
+Business rules that are product decisions (serviceable cities, languages,
+required fields, allowed values) stay in `config/lists.yaml` and `intent.md`,
+not in this file — changing them needs the approval described in the
+constitution.
+
+### Cost optimisations and how they map to settings
+
+| # | Optimisation | Setting | Default | Risk | Estimated effect on model cost |
+|---|---|---|---|---|---|
+| 1 | No model call on deterministic turns | `llm.skip_for_deterministic_turns` | on | none | −30–35% |
+| 2 | Send state + last few messages only | `llm.context_messages` | 6 | low | −35–40% |
+| 3 | Smaller model for extraction | `llm.extraction_model` | Haiku 4.5 | low–medium (eval-gated) | −25% |
+| 4 | One combined call per turn | `llm.combined_call` | off | medium | −35% more |
+| 5 | Smaller model for replies | `llm.reply_model` | Sonnet 5.5 | higher — replies are the product | −50% of reply cost |
+| — | Eval subset on PRs, full suite nightly | `evals.pr_subset` | on | none | ≈ −80% eval spend |
+
+Defaults 1–3 together: ≈ −70% model cost (R15). Options 4 and 5 are
+experiments: change the setting, run `lead-capture eval` and the `burst` load
+profile, and adopt only if every check still passes.
+

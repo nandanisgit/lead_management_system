@@ -41,6 +41,27 @@ simplest design that satisfies the spec; new dependencies, services or
 abstractions need a stated reason in the plan. Idempotency is required
 wherever WhatsApp or Google may retry (dedupe on `wa_message_id` and Lead ID).
 
+### VI. Configurable and Swappable by Design
+External services and tunable numbers are never hard-wired into business logic.
+
+- **Interfaces for every external service.** Conversation and domain code talk
+  only to interfaces, never to a vendor SDK: `LLMClient` (language model),
+  `MessagingChannel` (WhatsApp today; others later), `LeadRepository`
+  (Google Sheet today; database or CRM later), plus `TurnQueue`,
+  `ConversationLock` and `Clock`. Vendor code lives in one adapter module per
+  service, selected by configuration. Every interface has a fake/in-memory
+  adapter used in tests. Swapping a vendor means adding an adapter and
+  changing config — not editing the conversation engine.
+- **Performance and cost parameters are configuration, not constants.** Model
+  per call, token limits, context size, which turns use the model, timeouts,
+  retries, concurrency caps, debounce, thresholds, schedules, retention periods
+  and price rates are read from `config/settings.yaml` (overridable by
+  environment variables) and validated at start-up. Defaults live in config,
+  with the reason for each default in the feature's research notes.
+- **Every change to these settings is measurable**: eval and load-test reports
+  record the settings used, alongside quality, latency and cost results, so a
+  cheaper or faster setting is adopted only when the evals still pass.
+
 ## Product Constraints
 
 - Channel: WhatsApp Business Platform (Cloud API); respect the 24-hour
@@ -86,4 +107,4 @@ Reviewers check every PR against these principles; any deviation must be
 justified in the plan's complexity tracking section. Runtime guidance for
 agents is in [`CLAUDE.md`](../../CLAUDE.md).
 
-**Version**: 1.0.0 | **Ratified**: 2026-09-29 | **Last Amended**: 2026-09-29
+**Version**: 1.1.0 | **Ratified**: 2026-09-29 | **Last Amended**: 2026-09-29 (added Principle VI)

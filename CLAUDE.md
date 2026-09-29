@@ -29,6 +29,8 @@ Work moves through stages, one feature branch at a time:
 - No secrets, tokens or sheet IDs in code — use configuration / environment variables.
 - No personal data in logs beyond IDs.
 - Don't build anything in the intent's Non-goals list.
+- Never call a vendor SDK (Anthropic, WhatsApp/Meta, Google) from conversation or domain code — go through `LLMClient`, `MessagingChannel`, `LeadRepository` and the other interfaces; vendor code lives only in its adapter module.
+- Never hard-code performance or cost numbers (models, token limits, context size, timeouts, retries, concurrency, debounce, thresholds, schedules, retention, rates) — add them to `config/settings.yaml` with a validated default. See constitution Principle VI and research R16.
 
 ## Commands
 
@@ -45,4 +47,4 @@ uv run uvicorn lead_capture.app:app --port 8000   # run the service
 uv run ruff check . && uv run ruff format --check .   # lint
 ```
 
-Code lives in `src/lead_capture/`; prompts in `prompts/`; allowed values in `config/lists.yaml`; evals in `evals/`; load tests in `load/`. Scaling path: `specs/001-whatsapp-lead-capture/research.md` R14.
+Code lives in `src/lead_capture/`; prompts in `prompts/`; settings in `config/settings.yaml`; allowed values in `config/lists.yaml`; evals in `evals/`; load tests in `load/`. Scaling path: `specs/001-whatsapp-lead-capture/research.md` R14.

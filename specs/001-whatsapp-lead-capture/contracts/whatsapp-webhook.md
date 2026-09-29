@@ -18,6 +18,8 @@ sends messages through the Cloud API's messages endpoint.
 
 ### `POST /webhooks/whatsapp` — events
 
+(Mounted as `/webhooks/{channel}` with `channel = whatsapp`; another channel adapter gets its own path.)
+
 - **Header** `X-Hub-Signature-256: sha256=<hex>` = HMAC-SHA256 of the raw body
   with `WA_APP_SECRET`. Missing or wrong → `401`, nothing stored.
 - **Response**: `200` within 1 second for every well-signed payload, including
@@ -44,18 +46,21 @@ sends messages through the Cloud API's messages endpoint.
 
 ## Outbound (bot → WhatsApp)
 
-All sends go through a single `WhatsAppSender` interface:
+This contract is implemented by the `WhatsAppCloudChannel` adapter of the
+generic `MessagingChannel` interface (research R16). The engine never calls
+these methods by WhatsApp name; it sends normalised `OutboundMessage`s and
+checks `capabilities`. The WhatsApp-specific mapping is:
 
 | Method | Used for | Window rule |
 |---|---|---|
 | `send_text(to, body)` | normal replies | only if `last_inbound_at` < 24 h ago |
-| `send_buttons(to, body, buttons[≤3])` | consent (Yes / No), mode (Online / Home / Either), summary (Confirm / Change) | only inside 24 h |
-| `send_list(to, body, button_label, rows[≤10])` | board choice | only inside 24 h |
+| `send_choices(to, body, choices)` → reply buttons when ≤ 3 choices | consent (Yes / No), mode (Online / Home / Either), summary (Confirm / Change) | only inside 24 h |
+| `send_choices(to, body, choices)` → interactive list when 4–10 choices | board choice | only inside 24 h |
 | `send_template(to, name, lang, params)` | re-opening a conversation outside 24 h (`resume_request`), handoff acknowledgement outside hours | any time |
 
 - Button and row titles in the tutee's language (`en` / `hi`).
 - Every successful send stores an outbound `Message` with the returned ID.
-- Failures: retry up to 3 times with backoff on 429/5xx; on permanent failure
+- Failures: retry up to `channel.max_retries` times with backoff on 429/5xx; on permanent failure
   log the error class and conversation ID only.
 
 ## Configuration
