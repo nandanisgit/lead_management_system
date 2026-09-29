@@ -39,7 +39,8 @@ One requirement being gathered for one student.
 | `close_reason` | enum, nullable | `declined_consent` / `not_interested` / `out_of_area` / `opted_out` / `deletion_request` |
 | `handoff_reason` | enum, nullable | `requested` / `not_understood` / `complaint` / `sensitive` |
 | `handoff_at` | timestamp, nullable | |
-| `misunderstand_streak` | integer | resets on a successful turn; ≥3 → handoff (FR-023) |
+| `misunderstand_streak` | integer | resets on a successful turn; reaching `conversation.misunderstand_handoff_threshold` (default 3) → handoff (FR-023) |
+| `minor_alone` | boolean | true when FR-029 applies: `relationship = student` and `grade_level` in `lists.minor_grade_levels`, or the model's `likely_minor_alone` signal |
 | `source` | text | campaign ID from referral data, else `organic` |
 | `lead_id` | text, nullable | set on confirmation |
 | `first_inbound_at`, `last_inbound_at`, `last_outbound_at` | timestamp | 24-hour window uses `last_inbound_at` |
@@ -103,11 +104,14 @@ lead. Enforced by a Pydantic model; allowed values come from `config/lists.yaml`
 | `tutor_preferences` | optional | ≤ 200 chars |
 | `level_notes` | optional | ≤ 300 chars |
 | `email` | optional | valid email |
+| `guardian_name` | if `minor_alone` | 1–60 chars (FR-029) |
+| `guardian_relationship` | if `minor_alone` | `mother` / `father` / `guardian` / `other` |
 
 **Missing-field order** (what the bot asks next, grouped naturally):
 consent → contact_name & relationship → student_name → grade_level & board →
-subjects → mode → area & city → schedule → start_date → budget → (optional
-fields if the conversation allows) → summary.
+subjects → mode → area & city → schedule → start_date → budget → guardian_name &
+guardian_relationship (only if `minor_alone`) → (optional fields if the
+conversation allows) → summary.
 
 `mode = either` outside NCR is stored as `online` (spec edge case).
 

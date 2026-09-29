@@ -56,8 +56,9 @@ checks `capabilities`. The WhatsApp-specific mapping is:
 | `send_text(to, body)` | normal replies | only if `last_inbound_at` < 24 h ago |
 | `send_choices(to, body, choices)` → reply buttons when ≤ 3 choices | consent (Yes / No), mode (Online / Home / Either), summary (Confirm / Change) | only inside 24 h |
 | `send_choices(to, body, choices)` → interactive list when 4–10 choices | board choice | only inside 24 h |
-| `send_template(to, name, lang, params)` | re-opening a conversation outside 24 h (`resume_request`), handoff acknowledgement outside hours | any time |
+| `send_template(to, name, lang, params)` | business-initiated sends after the window has closed (none in v1; e.g. future reminders, or a reply delayed past the window) | any time |
 
+- **Window guard (FR-022)**: before any non-template send, the engine checks `last_inbound_at` against `capabilities.window_hours`. Outside the window it sends the configured template if one exists for that purpose, otherwise it drops the send and logs `send_outside_window` (IDs only). A tutee's new message reopens the window. Handoff acknowledgements are always replies to a fresh tutee message, so they are sent as normal text.
 - Button and row titles in the tutee's language (`en` / `hi`).
 - Every successful send stores an outbound `Message` with the returned ID.
 - Failures: retry up to `channel.max_retries` times with backoff on 429/5xx; on permanent failure

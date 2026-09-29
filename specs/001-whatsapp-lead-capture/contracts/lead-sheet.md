@@ -36,7 +36,7 @@ Columns AA–AC are never written by the bot.
 | S | Goal | optional |
 | T | Sessions per Week | optional |
 | U | Tutor Preferences | optional |
-| V | Notes | level notes and optional email |
+| V | Notes | level notes and optional email; for FR-029 leads starts with `MINOR – contact parent/guardian: <name> (<relationship>)` |
 | W | Language | `English` / `Hindi` |
 | X | Source | campaign ID or `organic` |
 | Y | Consent At | `YYYY-MM-DD HH:MM` IST |

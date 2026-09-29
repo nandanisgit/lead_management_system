@@ -108,8 +108,8 @@ Tutees are told what is stored and why before anything is saved, and can ask for
 - The tutee gives a contradictory detail later ("actually Class 10, not 9"): the latest value replaces the earlier one and is shown in the summary.
 - The tutee gives a value outside the allowed lists (e.g. an unknown board or an unrecognisable class): the assistant asks a clarifying question rather than guessing.
 - The tutee picks mode "either" and is outside Delhi/NCR: the lead is recorded as online.
-- The tutee returns after more than 24 hours: the business can only start the conversation again with an approved template message; free-form replies resume once the tutee replies.
-- The person chatting appears to be a minor without a parent involved: the assistant keeps strictly to requirement questions and may ask for a parent's name and relationship.
+- The tutee returns after more than 24 hours: their new message reopens WhatsApp's 24-hour service window, so the assistant replies normally and continues from the captured details. Approved template messages are needed only when the business itself starts or continues a conversation after the window has closed (for example future reminders); v1 sends no such messages.
+- The person chatting appears to be a minor without a parent involved (a student in Class 1–12 chatting for themselves, or other clear signs of being under 18): the assistant keeps strictly to requirement questions, asks for a parent or guardian's name and relationship before the summary, and marks the lead so the operations team contacts the parent (FR-029).
 - The tutee sends many messages quickly before the assistant replies: they are treated as one turn and answered together.
 - The tutee asks about fees, tutor names or availability: the assistant explains the team will share those details and continues gathering requirements.
 
@@ -149,7 +149,7 @@ Tutees are told what is stored and why before anything is saved, and can ask for
 - **FR-019**: System MUST track each conversation as in progress, stalled (no reply for 24 hours), handed over to a human, completed (lead recorded) or closed (with a reason: declined consent, not interested, out of area, opted out).
 - **FR-020**: System MUST resume a stalled or returning conversation from the details already captured.
 - **FR-021**: System MUST allow multiple leads from one WhatsApp number for different students and MUST prevent more than one active lead for the same number and student.
-- **FR-022**: System MUST send messages outside WhatsApp's 24-hour service window only as approved template messages.
+- **FR-022**: System MUST NOT send free-form messages when the tutee's last message is older than WhatsApp's 24-hour service window; any business-initiated message outside the window MUST be an approved template message. A tutee's new message reopens the window. (v1 sends no business-initiated messages; the rule guards delayed sends and future reminders.)
 
 **Human handoff**
 
@@ -162,6 +162,10 @@ Tutees are told what is stored and why before anything is saved, and can ask for
 - **FR-026**: System MUST automatically delete conversation transcripts 90 days after they were created and leads (with their conversation records) 1 year after creation.
 - **FR-027**: System MUST NOT include personal details in operational logs beyond identifiers.
 - **FR-028**: System MUST handle non-text messages (voice notes, images, stickers, documents) by asking the tutee to reply in text.
+
+**Minors**
+
+- **FR-029**: When the person chatting is a student in Class 1–12 chatting for themselves, or the conversation otherwise clearly indicates they are under 18 with no parent involved, System MUST keep strictly to requirement questions (off-topic messages get only a one-line redirect), MUST ask for a parent or guardian's name and relationship before showing the summary, and MUST mark the lead so the operations team contacts the parent or guardian.
 
 ### Key Entities
 
@@ -194,4 +198,5 @@ Tutees are told what is stored and why before anything is saved, and can ask for
 - Three consecutive failures to understand is a reasonable threshold for automatic handoff.
 - Tutees who choose "either" mode are treated as home-tuition candidates when in Delhi/NCR and as online otherwise.
 - Tutor search, matching, pricing, payments, demo scheduling and marketing broadcasts are out of scope (intent Non-goals).
+- Whether India's DPDP Act requires verifiable parental consent before storing a minor's requirement is a legal question to confirm with a lawyer; v1 records the parent or guardian's details and flags the lead so the operations team contacts them (FR-029).
 - The standard list of classes/levels and the budget-unit options will be finalised in the `Lists` reference during planning.

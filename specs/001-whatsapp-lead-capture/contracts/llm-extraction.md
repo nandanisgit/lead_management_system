@@ -44,7 +44,9 @@ values are dropped and trigger a clarifying question.
           "sessions_per_week":{"type": "integer"},
           "tutor_preferences":{"type": "string"},
           "level_notes":      {"type": "string"},
-          "email":            {"type": "string"}
+          "email":            {"type": "string"},
+          "guardian_name":    {"type": "string"},
+          "guardian_relationship": {"type": "string", "enum": ["mother", "father", "guardian", "other"]}
         },
         "additionalProperties": false
       },
@@ -60,7 +62,8 @@ values are dropped and trigger a clarifying question.
           "new_student":     {"type": "boolean", "description": "Tutee is starting a requirement for a different student"},
           "deletion_request":{"type": "boolean"},
           "complaint_or_sensitive": {"type": "boolean"},
-          "understood":      {"type": "boolean", "description": "False if the message could not be understood"}
+          "understood":      {"type": "boolean", "description": "False if the message could not be understood"},
+          "likely_minor_alone": {"type": "boolean", "description": "The person chatting appears to be under 18 and no parent is involved"}
         },
         "required": ["language", "understood"],
         "additionalProperties": false
@@ -81,7 +84,10 @@ code and includes:
 - the validated state and the list of still-missing required fields;
 - one **instruction** chosen by code, e.g. `ASK: grade_level, board`,
   `SUMMARISE_AND_CONFIRM`, `OFFER_ONLINE_OUT_OF_AREA`, `CLOSE_COMPLETED(today)`,
-  `HANDOFF_ACK(after_10am)`, `ASK_FOR_TEXT`, `LANGUAGE_UNSUPPORTED`.
+  `HANDOFF_ACK(after_10am)`, `ASK_FOR_TEXT`, `LANGUAGE_UNSUPPORTED`,
+  `ASK_GUARDIAN` (FR-029).
+- a `strict` flag when the conversation is `minor_alone`: no small talk, off-topic
+  messages get a one-line redirect only.
 
 ## Post-generation checks (code)
 
