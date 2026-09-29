@@ -77,6 +77,9 @@ be re-checked against current documentation during the Build stage.
   the app arrive as message echoes and are stored in the transcript; the bot
   stays silent while the flag is set. The team clears the flag by marking the
   row "Resolved" (read by a periodic sync) — or it expires after 72 hours.
+  Each row carries a **Reply By** time (tutee's last message + 24 h) because
+  the team can only reply inside WhatsApp's 24-hour window; with 10 AM–5 PM
+  operations the worst case is 7 working hours.
 - **Rationale**: Matches the spec assumption (same number, ops team, same
   hours) with no inbox software to build; the sheet is already where the team
   works.

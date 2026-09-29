@@ -36,7 +36,7 @@ Columns AA–AC are never written by the bot.
 | S | Goal | optional |
 | T | Sessions per Week | optional |
 | U | Tutor Preferences | optional |
-| V | Notes | level notes and optional email; for FR-029 leads starts with `MINOR – contact parent/guardian: <name> (<relationship>)` |
+| V | Notes | level notes and optional email; for FR-029 leads starts with `MINOR – consent given by student – contact parent/guardian: <name> (<relationship>)` |
 | W | Language | `English` / `Hindi` |
 | X | Source | campaign ID or `organic` |
 | Y | Consent At | `YYYY-MM-DD HH:MM` IST |
@@ -62,7 +62,8 @@ Columns AA–AC are never written by the bot.
 | E | Reason | bot (`requested` / `not understood` / `complaint` / `sensitive`) |
 | F | Captured So Far | bot (short summary of validated fields) |
 | G | Lead ID | bot (if a lead exists) |
-| H | Resolved | ops (`Resolved` when done) |
+| H | Reply By | bot (IST time the 24-hour window closes = tutee's last message + 24 h; updated if the tutee writes again) |
+| I | Resolved | ops (`Resolved` when done) |
 
 ## Tab `Lists`
 
@@ -83,7 +84,8 @@ Principle II). Implementations: `GoogleSheetLeadRepository`,
 | `delete_lead(lead_id: str) -> bool` | delete the row if present |
 | `delete_leads_created_before(cutoff: datetime) -> int` | retention |
 | `append_handoff(row: HandoffRow) -> None` | append to `Handoffs` |
-| `resolved_handoffs() -> list[str]` | Handoff IDs marked `Resolved` |
+| `resolved_handoffs() -> list[str]` | Handoff IDs marked `Resolved` (column I) |
+| `update_handoff_reply_by(handoff_id, reply_by)` | rewrite column H only, when the tutee writes again during a handoff |
 | `delete_handoffs_before(cutoff: datetime) -> int` | retention |
 | `sync_lists(lists: AllowedLists) -> None` | rewrite the `Lists` tab |
 | `check_headers() -> None` | raise if headers don't match this contract |

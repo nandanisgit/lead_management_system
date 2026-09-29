@@ -40,6 +40,7 @@ One requirement being gathered for one student.
 | `handoff_reason` | enum, nullable | `requested` / `not_understood` / `complaint` / `sensitive` |
 | `handoff_at` | timestamp, nullable | |
 | `misunderstand_streak` | integer | resets on a successful turn; reaching `conversation.misunderstand_handoff_threshold` (default 3) → handoff (FR-023) |
+| `consent_by_minor` | boolean | true when `minor_alone` is set after consent was given by the student (FR-029); shown in the lead's Notes |
 | `minor_alone` | boolean | true when FR-029 applies: `relationship = student` and `grade_level` in `lists.minor_grade_levels`, or the model's `likely_minor_alone` signal |
 | `source` | text | campaign ID from referral data, else `organic` |
 | `lead_id` | text, nullable | set on confirmation |
@@ -141,7 +142,7 @@ any active state ──not interested / out of area declined / STOP──► clo
 | Tab | One row per | Writer | Contract |
 |---|---|---|---|
 | `Leads` | confirmed lead | bot appends A–Z; ops owns Z updates and AA–AC | [lead-sheet.md](contracts/lead-sheet.md) |
-| `Handoffs` | handoff event | bot appends A–G; ops sets H (`Resolved`) | [lead-sheet.md](contracts/lead-sheet.md) |
+| `Handoffs` | handoff event | bot appends A–H and updates H (reply-by time); ops sets I (`Resolved`) | [lead-sheet.md](contracts/lead-sheet.md) |
 | `Lists` | allowed value | CLI `sync-lists` from `config/lists.yaml` | [lead-sheet.md](contracts/lead-sheet.md) |
 
 ## Retention

@@ -110,7 +110,7 @@ Tutees are told what is stored and why before anything is saved, and can ask for
 - The tutee picks mode "either" and is outside Delhi/NCR: the lead is recorded as online.
 - The tutee returns after more than 24 hours: their new message reopens WhatsApp's 24-hour service window, so the assistant replies normally and continues from the captured details. The business never messages first and sends no templates.
 - A reply cannot be sent inside the window (for example the service was down for more than 24 hours after the tutee's last message): the reply is dropped and logged, the conversation stays as it is, and it resumes when the tutee writes again.
-- A human agent (after handoff) must reply within 24 hours of the tutee's last message; after that neither the bot nor the team can message the tutee until they write again. With operations hours of 10 AM–5 PM every day, a handoff always leaves at least 17 hours of working-window time.
+- A human agent (after handoff) must reply within 24 hours of the tutee's last message; after that neither the bot nor the team can message the tutee until they write again. With operations hours of 10 AM–5 PM every day, the worst case leaves only **7 working hours** (a last message at 5 PM means the window closes at 5 PM the next day), so each `Handoffs` row shows a reply-by time and the team works handoffs in reply-by order. Every new tutee message extends the window.
 - The person chatting appears to be a minor without a parent involved (a student in Class 1–12 chatting for themselves, or other clear signs of being under 18): the assistant keeps strictly to requirement questions, asks for a parent or guardian's name and relationship before the summary, and marks the lead so the operations team contacts the parent (FR-029).
 - The tutee sends many messages quickly before the assistant replies: they are treated as one turn and answered together.
 - The tutee asks about fees, tutor names or availability: the assistant explains the team will share those details and continues gathering requirements.
@@ -167,7 +167,7 @@ Tutees are told what is stored and why before anything is saved, and can ask for
 
 **Minors**
 
-- **FR-029**: When the person chatting is a student in Class 1–12 chatting for themselves, or the conversation otherwise clearly indicates they are under 18 with no parent involved, System MUST keep strictly to requirement questions (off-topic messages get only a one-line redirect), MUST ask for a parent or guardian's name and relationship before showing the summary, and MUST mark the lead so the operations team contacts the parent or guardian.
+- **FR-029**: When the person chatting is a student in Class 1–12 chatting for themselves, or the conversation otherwise clearly indicates they are under 18 with no parent involved, System MUST keep strictly to requirement questions (off-topic messages get only a one-line redirect), MUST ask for a parent or guardian's name and relationship before showing the summary, and MUST mark the lead so the operations team contacts the parent or guardian. Because consent is asked before the assistant can tell it is talking to a minor, System MUST record that consent was given by the student (`consent_by_minor`) and the summary MUST ask the student to share it with their parent or guardian.
 
 ### Key Entities
 
