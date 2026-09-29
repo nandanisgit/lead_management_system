@@ -32,4 +32,16 @@ Work moves through stages, one feature branch at a time:
 
 ## Commands
 
-_To be filled in once the tech stack is chosen in the first plan (install, run, test, eval, lint)._
+Stack (from `specs/001-whatsapp-lead-capture/plan.md`): Python 3.12, FastAPI, Pydantic v2, SQLAlchemy + Alembic (SQLite), Anthropic SDK, Google Sheets API, APScheduler, Typer, pytest.
+
+```bash
+uv sync                          # install
+uv run alembic upgrade head      # migrate local store
+uv run pytest                    # tests (no network)
+uv run lead-capture eval         # conversation evals (real model)
+uv run lead-capture chat         # terminal chat with the engine
+uv run uvicorn lead_capture.app:app --port 8000   # run the service
+uv run ruff check . && uv run ruff format --check .   # lint
+```
+
+Code lives in `src/lead_capture/`; prompts in `prompts/`; allowed values in `config/lists.yaml`; evals in `evals/`.

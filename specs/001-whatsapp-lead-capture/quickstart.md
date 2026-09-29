@@ -1,0 +1,92 @@
+# Quickstart: WhatsApp Lead Capture
+
+How to set up, run and validate the feature end-to-end. Commands assume the
+layout in [plan.md](plan.md); they become runnable once the Build stage creates
+the code.
+
+## Prerequisites
+
+- Python 3.12 and [uv](https://docs.astral.sh/uv/)
+- Docker (for production-like runs)
+- An Anthropic API key
+- A Meta app with WhatsApp Cloud API: phone number ID, access token, app secret, a verify token of your choice; coexistence enabled on the business number (see [research.md R4](research.md))
+- A native Google Sheet with tabs `Leads`, `Handoffs`, `Lists` and headers exactly as in [contracts/lead-sheet.md](contracts/lead-sheet.md), shared as **Editor** with a service-account email
+- For live webhook tests from a laptop: a tunnel such as `cloudflared` or `ngrok`
+
+## Setup
+
+```bash
+uv sync                      # install dependencies
+cp .env.example .env         # fill in the variables below
+uv run alembic upgrade head  # create the local SQLite store
+uv run lead-capture check-sheet   # verifies access and header contract
+uv run lead-capture sync-lists    # writes config/lists.yaml into the Lists tab
+```
+
+| Variable | Notes |
+|---|---|
+| `ANTHROPIC_API_KEY`, `LLM_MODEL` | default `claude-sonnet-5-5` |
+| `WA_PHONE_NUMBER_ID`, `WA_ACCESS_TOKEN`, `WA_APP_SECRET`, `WA_VERIFY_TOKEN`, `WA_API_VERSION` | see [contracts/whatsapp-webhook.md](contracts/whatsapp-webhook.md) |
+| `LEAD_SHEET_ID`, `GOOGLE_SERVICE_ACCOUNT_FILE` | service-account JSON path (never committed) |
+| `DATABASE_URL` | default `sqlite:///data/lead_capture.db` |
+| `TZ_NAME` | `Asia/Kolkata` |
+
+## Automated validation
+
+```bash
+uv run pytest                          # unit + contract + integration (fakes, no network)
+uv run lead-capture eval               # full eval suite against the real model
+uv run lead-capture eval --scenario hinglish_home_dwarka   # one scenario
+```
+
+Expected: all tests pass; every eval check at ≥ 95% pass rate (see
+[research.md R10](research.md)). The eval report is written to
+`evals/reports/<timestamp>.md`.
+
+## Local conversation without WhatsApp
+
+```bash
+uv run lead-capture chat --number +919999900001
+```
+
+Starts a terminal chat with the real conversation engine, a fake WhatsApp
+sender and (by default) the in-memory lead repository. Add `--sheet` to write
+to the real Google Sheet.
+
+## Live end-to-end check
+
+```bash
+uv run uvicorn lead_capture.app:app --port 8000
+cloudflared tunnel --url http://localhost:8000     # or ngrok http 8000
+```
+
+Set the tunnel URL + `/webhooks/whatsapp` as the callback in the Meta app with
+your verify token, then message the business number from a test phone.
+
+## Validation scenarios
+
+| # | Spec | Do this | Expect |
+|---|---|---|---|
+| 1 | US1 | Say "Hi need maths tutor for my son", consent, answer questions, confirm | ≤ 2 questions per message; summary; one `NEW` row in `Leads` within 10 s; closing message matches the time of day |
+| 2 | US1 | Send "Class 9 CBSE maths and science, home tuition in Dwarka, weekday evenings" as the first detail | Only missing fields are asked for |
+| 3 | US1 | Say "not sure" when asked about budget | Bot asks for an approximate figure; never suggests an amount |
+| 4 | US2 | Stop halfway; reply again later | Bot recaps and continues; no row until confirmation |
+| 5 | US2 | After confirming, say "also need a tutor for my daughter" | A second, separate lead |
+| 6 | US3 | Ask for home tuition in Pune, then decline online | No row; conversation closed `out_of_area` |
+| 7 | US3 | Write in Tamil | Polite English + Hindi message about supported languages |
+| 8 | US4 | Say "can I talk to someone?" | Handover message; row in `Handoffs`; bot silent afterwards |
+| 9 | US5 | Reply "No" to consent | Nothing stored except the refusal; conversation closed |
+| 10 | US5 | Say "please delete my data" | Leads and conversations removed; confirmation sent |
+| 11 | Edge | Send a voice note | Bot asks for a text reply |
+| 12 | Edge | Replay a webhook payload twice (`uv run lead-capture replay <file>`) | One message stored, one reply, no duplicate row |
+| 13 | Edge | Revoke the sheet share, confirm a lead, restore the share | Tutee still gets confirmation; row appears after restore; `/healthz` shows `outbox_pending` returning to 0 |
+
+## Deploy
+
+```bash
+docker build -t lead-capture .
+docker run -d --env-file .env -v lead_data:/app/data -p 8000:8000 lead-capture
+```
+
+Put it behind HTTPS (Caddy or the host's reverse proxy) and point the Meta
+webhook at `https://<host>/webhooks/whatsapp`.
