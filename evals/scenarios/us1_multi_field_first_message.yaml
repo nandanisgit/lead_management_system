@@ -1,0 +1,19 @@
+name: us1_multi_field_first_message
+language: en
+opening: "Class 9 CBSE maths and science, home tuition in Dwarka Delhi, weekday evenings"
+style: "brief English; volunteers several details at once"
+tutee_facts:
+  contact_name: Neha
+  relationship: parent
+  student_name: Ishaan
+  grade_level: Class 9
+  board: CBSE
+  subjects: [Maths, Science]
+  mode: home
+  area: Dwarka
+  city: Delhi
+  schedule: weekday evenings
+  start_date: ASAP
+  budget: {min: 8000, unit: per_month}
+expect:
+  outcome: lead_recorded

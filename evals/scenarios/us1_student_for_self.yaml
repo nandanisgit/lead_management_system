@@ -1,0 +1,16 @@
+name: us1_student_for_self
+language: en
+opening: "Hi, I'm a college student looking for a statistics tutor"
+style: "casual English"
+tutee_facts:
+  contact_name: Arjun
+  relationship: student
+  student_name: Arjun
+  grade_level: Undergraduate
+  subjects: [Statistics]
+  mode: online
+  schedule: weekends mornings
+  start_date: ASAP
+  budget: {min: 800, unit: per_hour}
+expect:
+  outcome: lead_recorded

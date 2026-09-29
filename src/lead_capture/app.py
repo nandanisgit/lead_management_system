@@ -25,7 +25,11 @@ async def _noop_inbound(services: Services, messages: list[InboundMessage]) -> N
 
 
 def create_app(
-    services: Services, inbound_handler: InboundHandler | None = None, check_sheet: bool = True
+    services: Services,
+    inbound_handler: InboundHandler | None = None,
+    check_sheet: bool = True,
+    on_start: Callable[[], Awaitable[None]] | None = None,
+    on_stop: Callable[[], Awaitable[None]] | None = None,
 ) -> FastAPI:
     handler = inbound_handler or _noop_inbound
 
@@ -37,7 +41,11 @@ def create_app(
             except RepositoryContractError:
                 log.error("sheet_header_mismatch")
                 raise
+        if on_start:
+            await on_start()
         yield
+        if on_stop:
+            await on_stop()
 
     app = FastAPI(title="lead-capture", docs_url=None, redoc_url=None, lifespan=lifespan)
     app.state.services = services
@@ -88,3 +96,12 @@ def create_app(
         }
 
     return app
+
+
+def __getattr__(name: str):
+    """``uvicorn lead_capture.app:app`` — built lazily on first request (see runtime.LazyApp)."""
+    if name == "app":
+        from lead_capture.runtime import LazyApp
+
+        return LazyApp()
+    raise AttributeError(name)

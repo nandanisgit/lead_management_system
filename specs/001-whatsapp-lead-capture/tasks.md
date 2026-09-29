@@ -147,17 +147,17 @@ tested and demonstrated on its own. Every performance/cost number comes from
 - [X] T072 [US1] Implement FR-030 turn limiter checked by the dispatcher before the engine runs: count inbound turns per contact over the last hour/day from `Message` rows, compare with settings, send the `RATE_LIMITED` fixed text once, set `Contact.rate_limited_until`, skip engine and model calls while limited, in `src/lead_capture/conversation/rate_limit.py` and `src/lead_capture/conversation/dispatcher.py`
 - [X] T073 [P] [US1] Implement `GoogleSheetLeadRepository` (service account from `GOOGLE_SERVICE_ACCOUNT_FILE`, sheet `LEAD_SHEET_ID`, methods for `Leads` and `Lists` tabs; handoff methods may raise `NotImplementedError` until US4) in `src/lead_capture/adapters/leads/google_sheet.py`
 - [X] T074 [US1] Implement outbox drain (immediate trigger after confirmation plus every `leads.outbox_interval_seconds`, exponential backoff capped at `leads.max_backoff_seconds`, mark `synced`) in `src/lead_capture/jobs/outbox.py`
-- [ ] T075 [US1] Implement APScheduler setup with time zone `ops.timezone`, registering the outbox job, started from `app.py`, in `src/lead_capture/jobs/scheduler.py`
-- [ ] T076 [P] [US1] Implement CLI `chat` (terminal conversation with real engine, `FakeChannel`, in-memory repository; `--sheet` uses the real sheet), `check-sheet`, `sync-lists` (with `--dry-run`) and `replay <file>` in `src/lead_capture/cli.py`
+- [X] T075 [US1] Implement APScheduler setup with time zone `ops.timezone`, registering the outbox job, started from `app.py`, in `src/lead_capture/jobs/scheduler.py`
+- [X] T076 [P] [US1] Implement CLI `chat` (terminal conversation with real engine, `FakeChannel`, in-memory repository; `--sheet` uses the real sheet), `check-sheet`, `sync-lists` (with `--dry-run`) and `replay <file>` in `src/lead_capture/cli.py`
 
 ### Evals for User Story 1
 
-- [ ] T077 [US1] Implement simulated tutee (answers only from `tutee_facts`, in the scenario's style, model `evals.tutee_model`) in `evals/tutee.py`
-- [ ] T078 [US1] Implement checks mapped to SC-001 (lead equals facts), SC-002 (≤ 8 bot messages), SC-003 (no re-ask, no suggested amount), FR-001/002 (≤ 2 questions, language), expected outcome, plus token usage and estimated cost per run, in `evals/checks.py`
-- [ ] T079 [US1] Implement runner (`evals.repeats`, `evals.pass_threshold`, `--scenario`, `--pr-subset`, `--model`, report with effective settings to `evals/reports/<timestamp>.md`, non-zero exit below threshold) and wire `lead-capture eval` in `evals/runner.py` and `src/lead_capture/cli.py`
-- [ ] T080 [P] [US1] Write scenarios `evals/scenarios/us1_*.yaml`: English parent happy path, Hinglish home tuition in Dwarka, multi-field first message, correction at summary, budget unsure, Hindi-only tutee, student chatting for self
-- [ ] T081 [P] [US1] Write eval scenario `evals/scenarios/us1_minor_alone.yaml`: Class 9 student chatting alone in Hinglish, asks an off-topic question mid-way; expected: guardian details captured, strict redirect, lead marked as minor
-- [ ] T082 [P] [US1] Write eval scenario `evals/scenarios/us1_off_topic.yaml`: parent asks about fees and a specific tutor mid-conversation and makes small talk; expected: short fixed answer, steer back, no amount suggested, lead completed
+- [X] T077 [US1] Implement simulated tutee (answers only from `tutee_facts`, in the scenario's style, model `evals.tutee_model`) in `evals/tutee.py`
+- [X] T078 [US1] Implement checks mapped to SC-001 (lead equals facts), SC-002 (≤ 8 bot messages), SC-003 (no re-ask, no suggested amount), FR-001/002 (≤ 2 questions, language), expected outcome, plus token usage and estimated cost per run, in `evals/checks.py`
+- [X] T079 [US1] Implement runner (`evals.repeats`, `evals.pass_threshold`, `--scenario`, `--pr-subset`, `--model`, report with effective settings to `evals/reports/<timestamp>.md`, non-zero exit below threshold) and wire `lead-capture eval` in `evals/runner.py` and `src/lead_capture/cli.py`
+- [X] T080 [P] [US1] Write scenarios `evals/scenarios/us1_*.yaml`: English parent happy path, Hinglish home tuition in Dwarka, multi-field first message, correction at summary, budget unsure, Hindi-only tutee, student chatting for self
+- [X] T081 [P] [US1] Write eval scenario `evals/scenarios/us1_minor_alone.yaml`: Class 9 student chatting alone in Hinglish, asks an off-topic question mid-way; expected: guardian details captured, strict redirect, lead marked as minor
+- [X] T082 [P] [US1] Write eval scenario `evals/scenarios/us1_off_topic.yaml`: parent asks about fees and a specific tutor mid-conversation and makes small talk; expected: short fixed answer, steer back, no amount suggested, lead completed
 
 **Checkpoint**: MVP — a real WhatsApp chat produces a correct `NEW` row; US1 tests and evals pass
 

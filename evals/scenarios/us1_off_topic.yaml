@@ -1,0 +1,19 @@
+name: us1_off_topic
+language: en
+opening: "Hello, need a tutor for my son"
+style: "chatty English"
+tutee_extra: "After giving your name, ask how much the tutors charge and whether Mr Sharma is
+  available. Later make one bit of small talk about the weather."
+tutee_facts:
+  contact_name: Meera
+  relationship: parent
+  student_name: Dev
+  grade_level: Class 7
+  board: CBSE
+  subjects: [Science]
+  mode: online
+  schedule: weekday evenings
+  start_date: ASAP
+  budget: {min: 500, unit: per_hour}
+expect:
+  outcome: lead_recorded

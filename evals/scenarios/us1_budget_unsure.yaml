@@ -1,0 +1,19 @@
+name: us1_budget_unsure
+language: en
+opening: "Need a physics tutor for class 11"
+style: "short English replies"
+tutee_extra: "The first time you are asked about budget, say you are not sure and ask what
+  others usually pay. If asked again, say about 700 per hour."
+tutee_facts:
+  contact_name: Vikram
+  relationship: parent
+  student_name: Kabir
+  grade_level: Class 11
+  board: CBSE
+  subjects: [Physics]
+  mode: online
+  schedule: Tuesday and Thursday 7 pm
+  start_date: ASAP
+  budget: {min: 700, unit: per_hour}
+expect:
+  outcome: lead_recorded

@@ -1,0 +1,19 @@
+name: us1_correction_at_summary
+language: en
+opening: "Looking for an English tutor for my daughter, online please"
+style: "short English replies"
+tutee_extra: "When you first see the summary, say you'd like the timing changed to weekends
+  instead, then confirm the corrected summary."
+tutee_facts:
+  contact_name: Rahul
+  relationship: parent
+  student_name: Anaya
+  grade_level: Class 6
+  board: ICSE
+  subjects: [English]
+  mode: online
+  schedule: weekends
+  start_date: ASAP
+  budget: {min: 400, unit: per_hour}
+expect:
+  outcome: lead_recorded

@@ -1,0 +1,19 @@
+name: us1_hinglish_home_dwarka
+language: hi
+opening: "hi, beta ke liye maths tutor chahiye"
+style: "Hinglish (Hindi in Roman script), short replies, some typos"
+tutee_facts:
+  contact_name: Sunita
+  relationship: parent
+  student_name: Rohan
+  grade_level: Class 8
+  board: CBSE
+  subjects: [Maths, Science]
+  mode: home
+  area: Dwarka Sector 12
+  city: Delhi
+  schedule: weekdays shaam 5 ke baad
+  start_date: ASAP
+  budget: {min: 600, unit: per_hour}
+expect:
+  outcome: lead_recorded

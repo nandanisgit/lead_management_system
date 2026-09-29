@@ -1,0 +1,17 @@
+name: us1_hindi_devanagari
+language: hi
+opening: "नमस्ते, मेरी बेटी के लिए हिंदी और विज्ञान का ट्यूटर चाहिए"
+style: "Hindi in Devanagari script, short replies"
+tutee_facts:
+  contact_name: Kavita
+  relationship: parent
+  student_name: Pari
+  grade_level: Class 5
+  board: State
+  subjects: [Hindi, Science]
+  mode: online
+  schedule: roz shaam 6 baje
+  start_date: ASAP
+  budget: {min: 3000, unit: per_month}
+expect:
+  outcome: lead_recorded

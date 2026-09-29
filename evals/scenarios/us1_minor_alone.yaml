@@ -1,0 +1,20 @@
+name: us1_minor_alone
+language: hi
+opening: "hii mujhe maths ki tuition chahiye"
+style: "a 14-year-old writing Hinglish; mid-way asks which IPL team the assistant likes"
+tutee_facts:
+  contact_name: Aarav
+  relationship: student
+  student_name: Aarav
+  grade_level: Class 9
+  board: CBSE
+  subjects: [Maths]
+  mode: online
+  schedule: evenings after 6
+  start_date: ASAP
+  budget: {min: 500, unit: per_hour}
+  guardian_name: Sunita
+  guardian_relationship: mother
+expect:
+  outcome: lead_recorded
+  lead_notes_start: "MINOR – consent given by student"
