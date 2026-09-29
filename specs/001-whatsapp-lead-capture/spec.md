@@ -113,6 +113,7 @@ Tutees are told what is stored and why before anything is saved, and can ask for
 - A human agent (after handoff) must reply within 24 hours of the tutee's last message; after that neither the bot nor the team can message the tutee until they write again. With operations hours of 10 AM–5 PM every day, the worst case leaves only **7 working hours** (a last message at 5 PM means the window closes at 5 PM the next day), so each `Handoffs` row shows a reply-by time and the team works handoffs in reply-by order. Every new tutee message extends the window.
 - The person chatting appears to be a minor without a parent involved (a student in Class 1–12 chatting for themselves, or other clear signs of being under 18): the assistant keeps strictly to requirement questions, asks for a parent or guardian's name and relationship before the summary, and marks the lead so the operations team contacts the parent (FR-029).
 - The tutee sends many messages quickly before the assistant replies: they are treated as one turn and answered together.
+- A number sends far more messages than a real tutee would (spam, a looping bot, testing): after the per-hour or per-day limit (FR-030) the assistant sends one notice and then stays silent, with no model calls, until the period passes.
 - The tutee asks about fees, tutor names or availability: the assistant explains the team will share those details and continues gathering requirements.
 
 ## Requirements *(mandatory)*
@@ -127,7 +128,7 @@ Tutees are told what is stored and why before anything is saved, and can ask for
 - **FR-004**: System MUST offer tap-to-choose options for closed choices (such as mode and board) while always accepting typed answers.
 - **FR-005**: System MUST obtain the tutee's consent, after explaining what is stored, why and for how long, before collecting any details.
 - **FR-006**: System MUST NOT suggest, quote or imply budget ranges, fees or rates.
-- **FR-007**: System MUST briefly answer safe off-topic questions and steer back to the requirement conversation.
+- **FR-007**: System MUST handle off-topic messages without losing the thread: questions about fees, tutor names or availability get a short fixed reply that the team will share those details, followed by the next requirement question; other safe off-topic questions get at most a one-sentence answer, then the next question; unsafe or sensitive ones follow FR-023. In strict mode (FR-029) every off-topic message gets only a one-line redirect.
 
 **Requirement capture**
 
@@ -164,6 +165,10 @@ Tutees are told what is stored and why before anything is saved, and can ask for
 - **FR-026**: System MUST automatically delete conversation transcripts 90 days after they were created and leads (with their conversation records) 1 year after creation.
 - **FR-027**: System MUST NOT include personal details in operational logs beyond identifiers.
 - **FR-028**: System MUST handle non-text messages (voice notes, images, stickers, documents) by asking the tutee to reply in text.
+
+**Abuse and cost protection**
+
+- **FR-030**: System MUST limit how many tutee turns it processes per WhatsApp number, per hour and per day (limits from configuration, defaults 30 per hour and 100 per day). When a limit is reached, System MUST send one fixed notice that the team will follow up, record the event (IDs only), and then neither reply nor call the language model for that number until the limit period has passed.
 
 **Minors**
 

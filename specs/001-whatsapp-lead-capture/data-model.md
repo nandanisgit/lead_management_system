@@ -24,6 +24,7 @@ One WhatsApp user.
 | `relationship` | enum, nullable | `parent` / `student` / `other` |
 | `language` | enum | `en` / `hi`; latest detected |
 | `consent_at` | timestamp, nullable | set when consent given (FR-005) |
+| `rate_limited_until` | timestamp, nullable | set when a turn limit is hit (FR-030); turns are ignored until then. Turn counts are computed from inbound `Message` rows in the last hour / day |
 | `created_at`, `updated_at` | timestamp | |
 
 ### Conversation

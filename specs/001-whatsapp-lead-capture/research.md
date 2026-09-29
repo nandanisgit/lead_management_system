@@ -478,6 +478,9 @@ load-test reports print the effective settings.
 | | `conversation.misunderstand_handoff_threshold` | `3` | FR-023 |
 | | `conversation.stalled_after_hours` | `24` | FR-019 |
 | | `conversation.handoff_expiry_hours` | `72` | R4 |
+| | `conversation.max_turns_per_contact_per_hour` | `30` | FR-030; well above a real chat (≈ 10 turns), stops spam and loops |
+| | `conversation.max_turns_per_contact_per_day` | `100` | FR-030; caps worst-case model + WhatsApp cost per number |
+| | `conversation.off_topic_max_sentences` | `1` | FR-007 |
 | **Channel** | `channel.provider` | `whatsapp_cloud` | R3 |
 | | `channel.send_timeout_seconds` / `channel.max_retries` | `5` / `3` | contract `whatsapp-webhook.md` |
 | **Leads** | `leads.repository` | `google_sheet` | R5 |

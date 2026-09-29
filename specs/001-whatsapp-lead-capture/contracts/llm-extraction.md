@@ -63,7 +63,9 @@ values are dropped and trigger a clarifying question.
           "deletion_request":{"type": "boolean"},
           "complaint_or_sensitive": {"type": "boolean"},
           "understood":      {"type": "boolean", "description": "False if the message could not be understood"},
-          "likely_minor_alone": {"type": "boolean", "description": "The person chatting appears to be under 18 and no parent is involved"}
+          "likely_minor_alone": {"type": "boolean", "description": "The person chatting appears to be under 18 and no parent is involved"},
+          "off_topic":       {"type": "boolean", "description": "The message is not about the tutoring requirement"},
+          "asks_fees_or_tutors": {"type": "boolean", "description": "The tutee asks about fees, rates, tutor names or availability"}
         },
         "required": ["language", "understood"],
         "additionalProperties": false
@@ -85,7 +87,9 @@ code and includes:
 - one **instruction** chosen by code, e.g. `ASK: grade_level, board`,
   `SUMMARISE_AND_CONFIRM`, `OFFER_ONLINE_OUT_OF_AREA`, `CLOSE_COMPLETED(today)`,
   `HANDOFF_ACK(after_10am)`, `ASK_FOR_TEXT`, `LANGUAGE_UNSUPPORTED`,
-  `ASK_GUARDIAN` (FR-029).
+  `ASK_GUARDIAN` (FR-029), `ANSWER_OFF_TOPIC_AND_STEER(next_ask)` (FR-007: at most
+  one sentence, then the next question), `FEES_OR_TUTORS_AND_STEER(next_ask)` (fixed
+  text, no model call), `RATE_LIMITED` (FR-030, fixed text).
 - a `strict` flag when the conversation is `minor_alone`: no small talk, off-topic
   messages get a one-line redirect only.
 
