@@ -64,8 +64,9 @@ External services and tunable numbers are never hard-wired into business logic.
 
 ## Product Constraints
 
-- Channel: WhatsApp Business Platform (Cloud API); respect the 24-hour
-  customer-service window and use approved templates outside it.
+- Channel: WhatsApp Business Platform (Cloud API). Conversations are started
+  by tutees only; the bot replies only within the 24-hour customer-service
+  window and sends no business-initiated messages or templates.
 - Operational DB (v1): a native Google Sheet on Google Drive, accessed through
   a service account limited to that one sheet.
 - Conversation state and transcripts live in the bot's own store, not the sheet.
@@ -107,4 +108,4 @@ Reviewers check every PR against these principles; any deviation must be
 justified in the plan's complexity tracking section. Runtime guidance for
 agents is in [`CLAUDE.md`](../../CLAUDE.md).
 
-**Version**: 1.1.0 | **Ratified**: 2026-09-29 | **Last Amended**: 2026-09-29 (added Principle VI)
+**Version**: 1.1.1 | **Ratified**: 2026-09-29 | **Last Amended**: 2026-09-29 (1.1.0 added Principle VI; 1.1.1 tutee-initiated only, no templates)

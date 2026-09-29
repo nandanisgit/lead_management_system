@@ -211,7 +211,7 @@ changing conversation logic.
 ## 10. Constraints
 
 - **Channel:** WhatsApp Business Platform (Cloud API) with an approved business number.
-- **24-hour window:** free-form replies only within 24h of the tutee's last message; follow-ups after that must use pre-approved message templates.
+- **Tutee-initiated only:** every conversation is started by the tutee. The bot only replies within WhatsApp's 24-hour window after the tutee's last message and never sends business-initiated messages or message templates (no reminders, re-engagement or broadcasts).
 - **Idempotency:** WhatsApp may deliver webhooks more than once — dedupe on `wa_message_id`.
 - **Latency:** reply within 5 seconds of an inbound message (p95).
 - **Privacy & consent:** collect consent before storing personal data; store only what's needed; support deletion on request; comply with India's DPDP Act. No personal data in logs beyond IDs.
