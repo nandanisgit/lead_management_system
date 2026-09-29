@@ -218,7 +218,7 @@ changing conversation logic.
 - **Transcript retention:** rows in `messages` (bot store) are deleted **3 months (90 days)** after they were created, by a daily scheduled job. The structured lead must not depend on transcripts after that.
 - **Lead retention:** rows in the `Leads` sheet (and matching `conversations` rows in the bot store) are deleted **1 year** after `Created At`, by the same daily job. The consent message should mention this retention period.
 - **Google Sheets access:** the bot uses the Google Sheets API through a **service account** that has edit access to that one sheet only. The sheet ID comes from config, never hard-coded. Drive sharing is limited to the operations team — no "anyone with the link" access.
-- **Sheet writes:** the bot only **appends** rows; it never edits or deletes rows except for the retention job. Ops-owned columns (Z status updates onwards, AA–AC) are never overwritten by the bot.
+- **Sheet writes:** the bot only **appends** rows; it never edits or deletes rows except for the retention job and deletion requests from tutees. Ops-owned columns (Z status updates onwards, AA–AC) are never overwritten by the bot.
 - **Sheet idempotency:** before appending, check whether the Lead ID already exists; retry failed writes with backoff and keep the lead queued in the bot store until the write succeeds, so no confirmed lead is lost.
 - **Sheet limits:** stay within Google Sheets API quotas (batch where possible). The sheet is expected to hold one year of leads; revisit the DB choice if it grows beyond ~50,000 rows.
 - **Languages:** English and Hindi only in v1.
