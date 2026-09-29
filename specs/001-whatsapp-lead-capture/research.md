@@ -252,3 +252,139 @@ likely to be needed, and what triggers each.
   worker without code changes (step 4).
 - The model name is configuration — per-call model choice without code changes (step 1).
 
+
+## R15. Running costs
+
+All figures are **estimates as of 29 Sep 2026**, to be replaced with measured
+numbers once the service logs messages and tokens per conversation (see
+"Tracking" below). Currency conversion assumes **₹88 = US$1**.
+
+### Assumptions used throughout
+
+| Assumption | Value | Source |
+|---|---|---|
+| Bot messages per conversation (average across completed and abandoned) | 8 | spec SC-002 target (≤ 8 for completed leads) |
+| Conversations that become leads | 60% | spec SC-004 target |
+| Tutee turns (model calls ×2) per conversation | ~9 completed, ~4 abandoned | plan: one extraction + one reply call per turn |
+| Templates sent by the bot | ~0 in v1 | no automatic reminders in v1 (spec assumptions) |
+| Volumes modelled | 50 / 150 / 300 conversations per day | plan scale (a few hundred per day) |
+
+### 1. WhatsApp Business Platform (Meta)
+
+Meta charges **per delivered message** from the business, by message type and
+the recipient's country. Messages from tutees are always free. The Cloud API
+itself (hosting, number registration, business verification) has no fee, and
+using it directly avoids the ₹0.08–₹0.30 per-message markup that resellers
+(BSPs) add.
+
+| Message the bot sends | Until 30 Sep 2026 | From **1 Oct 2026** (India) |
+|---|---|---|
+| Reply within 24 h of the tutee's last message ("service" — every normal bot and human reply) | free | **1,000 free per phone number per month**, then ≈ ₹0.115 each |
+| Utility template (e.g. request received), inside the 24-hour window | free | charged, ≈ ₹0.115 |
+| Utility template outside the 24-hour window | ≈ ₹0.115 | ≈ ₹0.115 |
+| Authentication template | ≈ ₹0.115 | ≈ ₹0.115 |
+| Marketing template | ≈ ₹0.86 (raised from ≈ ₹0.78 in 2026) | ≈ ₹0.86 |
+| Anything within 72 h of a tutee arriving from a click-to-WhatsApp ad or Facebook CTA | free | **still free** |
+
+- **GST of 18%** applies on top of Meta's charges.
+- Replies written by an AI bot are billed the same as human replies — there is no separate AI category.
+- Replies ops staff send from the WhatsApp Business app (coexistence, R4) are billed the same as bot replies.
+- Button and list (interactive) messages count as one message each.
+- **Billing currency:** India accounts must move to INR billing by **31 Dec 2026**; from 1 Jan 2027 non-INR accounts stop delivering messages.
+- **Uncertainty:** the 1 Oct 2026 India rate and the 1,000-message allowance come from Indian provider blogs; at least one source reports no free allowance. Confirm in WhatsApp Manager → Billing / Meta's rate card before budgeting.
+
+**Estimated monthly WhatsApp cost (from 1 Oct 2026, incl. GST):**
+
+| Volume | Bot messages / month | Billable (after 1,000 free) | Monthly | Per completed lead |
+|---|---|---|---|---|
+| 50 conversations/day | ~12,000 | ~11,000 | **~₹1,500** | ~₹1.70 |
+| 150 conversations/day | ~36,000 | ~35,000 | **~₹4,750** | ~₹1.75 |
+| 300 conversations/day | ~72,000 | ~71,000 | **~₹9,600** | ~₹1.80 |
+
+If most tutees arrive through click-to-WhatsApp ads, most of these
+conversations fall inside the free 72-hour window and cost close to nothing.
+
+### 2. Claude API (Anthropic)
+
+Official list prices (per million tokens):
+
+| Model | Input | Output | Cache write (5 min) | Cache read |
+|---|---|---|---|---|
+| Claude Sonnet 5.5 (`claude-sonnet-5-5`, default) | $2 | $10 | $2.50 | $0.20 |
+| Claude Haiku 4.5 | $1 | $5 | $1.25 | $0.10 |
+
+**Per tutee turn** (two calls, system prompt and tool schema cached):
+
+| Call | Cached input | Other input | Output |
+|---|---|---|---|
+| Extraction | ~2,000 | ~1,800 (transcript, state) | ~150 |
+| Reply | ~1,500 | ~1,800 | ~80 |
+
+≈ **US$0.010 per turn** with Sonnet 5.5 for both calls (≈ $0.0055 extraction +
+$0.0047 reply), plus ~10% for guard-triggered regenerations and retries. That
+gives ≈ $0.10 (₹8.8) per completed conversation, ≈ $0.045 per abandoned one,
+and ≈ $0.078 (₹6.9) per conversation on average.
+
+**Estimated monthly Claude cost:**
+
+| Volume | Sonnet for both calls | Haiku for extraction, Sonnet for replies (≈ −26%) | Haiku for both (≈ −50%) |
+|---|---|---|---|
+| 50 conversations/day | **~₹10,300** | ~₹7,600 | ~₹5,200 |
+| 150 conversations/day | **~₹30,900** | ~₹22,900 | ~₹15,500 |
+| 300 conversations/day | **~₹61,800** | ~₹45,700 | ~₹30,900 |
+
+- Per completed lead: ≈ ₹11.5 with Sonnet for both calls.
+- Indian GST may apply to the Anthropic invoice depending on billing setup; check the invoice.
+- Moving extraction to Haiku is the first cost lever and is a configuration change (R2, R14 step 1); it should only be made if evals still pass.
+
+**Development and testing:**
+
+| Activity | Estimate |
+|---|---|
+| Full eval run (≈ 30 scenarios × 3 runs, Sonnet bot + Haiku simulated tutee) | ≈ $10–12 per run |
+| CI evals | only on PRs touching conversation code, prompts or evals |
+| `burst` load test (30 full conversations, real model) | ≈ $3–4 per run |
+| `capacity` and `soak` load tests | ≈ $0 (model stubbed) |
+
+### 3. Hosting and other services
+
+| Item | Estimate |
+|---|---|
+| Small Linux VM (1 vCPU, 1 GB) with persistent disk | ≈ US$6–12/month (≈ ₹500–1,000) |
+| HTTPS certificate | free (Let's Encrypt via Caddy) |
+| Google Sheets API and service account | free |
+| Business phone number for WhatsApp | an existing or new SIM/landline not already on WhatsApp; no Meta fee |
+| Backups (SQLite file copy to object storage) | < US$1/month |
+
+### 4. Total monthly estimate
+
+| Volume | WhatsApp | Claude (Sonnet ×2) | Hosting | **Total / month** | **Per completed lead** |
+|---|---|---|---|---|---|
+| 50 conversations/day (~900 leads) | ~₹1,500 | ~₹10,300 | ~₹800 | **~₹12,600** | **~₹14** |
+| 150 conversations/day (~2,700 leads) | ~₹4,750 | ~₹30,900 | ~₹800 | **~₹36,500** | **~₹13.5** |
+| 300 conversations/day (~5,400 leads) | ~₹9,600 | ~₹61,800 | ~₹1,000 | **~₹72,400** | **~₹13.4** |
+
+The language model is about 80–85% of running cost; WhatsApp about 13%.
+
+### Cost levers, in order of impact
+
+1. **Model choice per call** — Haiku for extraction (−26% of model cost), then test Haiku for replies too (−50%).
+2. **Fewer bot messages per conversation** — lowers both WhatsApp and model cost; the "≤ 8 messages" target (SC-002) is also a cost target. Never split one reply into several messages.
+3. **Click-to-WhatsApp ads** as the entry point — conversations inside the 72-hour free window have no WhatsApp charge.
+4. **Shorter context** — cap transcript sent to the model (plan: last 20 messages) and keep the system prompt cached.
+5. **Avoid marketing templates** — if reminders are added later, get them approved as utility (≈ ₹0.115) rather than marketing (≈ ₹0.86).
+
+### Tracking
+
+- Log per conversation (IDs only, no personal data): bot messages sent, templates sent by category, model calls, input/output/cached tokens per model.
+- `/healthz` stays personal-data-free; a `lead-capture costs --month YYYY-MM` CLI command summarises messages, tokens and estimated cost per conversation and per lead, using rates from configuration (`config/rates.yaml`) so they can be updated when Meta or Anthropic change prices.
+- Eval and load-test reports include token usage and estimated cost per run.
+
+### Sources
+
+- Meta — Pricing on the WhatsApp Business Platform: https://developers.facebook.com/documentation/business-messaging/whatsapp/pricing
+- MyOperator — WhatsApp Business API pricing in India 2026: https://myoperator.com/blog/whatsapp-business-api-pricing-india-2026
+- Mark360.ai — WhatsApp service message pricing India (1 Oct 2026): https://mark360.ai/blog/whatsapp-service-message-pricing-october-1-2026
+- Wati — WhatsApp service message pricing changes (2026): https://www.wati.io/en/blog/whatsapp-service-message-pricing/
+- SendPulse — WhatsApp service message pricing changes, Oct 2026: https://sendpulse.com/blog/whatsapp-service-message-pricing
+- Anthropic — Claude pricing: https://platform.claude.com/docs/en/about-claude/pricing

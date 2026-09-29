@@ -40,6 +40,8 @@ out later without rewriting the conversation logic.
 
 **Constraints**: WhatsApp 24-hour window and template rules; Sheets API quotas; no personal data in logs; English/Hindi only; home tuition Delhi/NCR only; ops hours 10 AM–5 PM IST daily
 
+**Cost (estimate, research R15)**: ≈ ₹13–14 per completed lead at 50–300 conversations/day — Claude ≈ 80–85%, WhatsApp ≈ 13% (service messages billable from 1 Oct 2026), hosting the rest
+
 **Scale/Scope**: up to a few hundred conversations per day; ≤ ~50,000 lead rows per year; single instance. Assumed peak for load testing: 30 tutees chatting at once and 5 inbound messages/second for 10 minutes (research R13). Scaling path beyond v1: research R14.
 
 ## Constitution Check
@@ -81,7 +83,7 @@ specs/001-whatsapp-lead-capture/
 src/lead_capture/
 ├── app.py                  # FastAPI app, routes wiring, startup checks
 ├── config.py               # Settings from environment
-├── cli.py                  # Typer CLI: chat, eval, check-sheet, sync-lists, replay, jobs
+├── cli.py                  # Typer CLI: chat, eval, load, costs, check-sheet, sync-lists, replay, jobs
 ├── domain/
 │   ├── requirement.py      # Requirement model + validators
 │   ├── lists.py            # Loads config/lists.yaml
@@ -119,6 +121,7 @@ src/lead_capture/
 
 prompts/assistant.md        # System prompt (tone, language, rules)
 config/lists.yaml           # Allowed values
+config/rates.yaml           # WhatsApp and model rates for cost reports (research R15)
 migrations/                 # Alembic
 evals/
 ├── scenarios/*.yaml        # Tutee facts, style, expected outcome
