@@ -15,7 +15,11 @@ against allowed lists, the out-of-area and budget rules, and every write.
 Confirmed leads go through a local outbox so they are recorded exactly once
 even if Google is briefly unavailable. Scheduled jobs handle stalled
 conversations, handoff sync and retention. Conversation quality is verified by
-an eval suite of scripted tutee chats mapped to the spec's success criteria.
+an eval suite in which a simulated tutee answers from known facts, scored
+against the spec's success criteria; latency and exactly-once targets are
+verified by load tests (capacity, burst, soak). The design keeps seams
+(`LeadRepository`, `TurnQueue`, `ConversationLock`, SQLAlchemy) so it can scale
+out later without rewriting the conversation logic.
 (Decisions: [research.md](research.md).)
 
 ## Technical Context
@@ -26,7 +30,7 @@ an eval suite of scripted tutee chats mapped to the spec's success criteria.
 
 **Storage**: SQLite (WAL) for the bot working store; native Google Sheet as the operational lead register
 
-**Testing**: pytest (+ pytest-asyncio, respx for HTTP fakes); custom eval runner in `evals/` against the real model
+**Testing**: pytest (+ pytest-asyncio, respx for HTTP fakes); eval runner in `evals/` with a simulated tutee (real model under test); Locust load profiles in `load/`
 
 **Target Platform**: Linux server, one Docker container behind HTTPS
 
@@ -36,7 +40,7 @@ an eval suite of scripted tutee chats mapped to the spec's success criteria.
 
 **Constraints**: WhatsApp 24-hour window and template rules; Sheets API quotas; no personal data in logs; English/Hindi only; home tuition Delhi/NCR only; ops hours 10 AM–5 PM IST daily
 
-**Scale/Scope**: up to a few hundred conversations per day; ≤ ~50,000 lead rows per year; single instance
+**Scale/Scope**: up to a few hundred conversations per day; ≤ ~50,000 lead rows per year; single instance. Assumed peak for load testing: 30 tutees chatting at once and 5 inbound messages/second for 10 minutes (research R13). Scaling path beyond v1: research R14.
 
 ## Constitution Check
 
@@ -46,7 +50,7 @@ an eval suite of scripted tutee chats mapped to the spec's success criteria.
 |---|---|---|---|
 | I. Intent is the source of truth | Every user story maps to G1–G7; nothing from Non-goals (no matching, pricing, scheduling, broadcasts). Required fields and lifecycle match intent §6 and §8. | ✅ | ✅ |
 | II. Validated data only | Model output is a proposal via `record_requirements`; the `Requirement` Pydantic model validates against `config/lists.yaml`; only `confirming → completed` creates an outbox row; sheet access only via `LeadRepository`; append-only A–Z, never AA–AC. | ✅ | ✅ |
-| III. Test-first, eval-backed | pytest for deterministic code with fakes; eval suite with checks mapped to SC-001/002/003/008; CI gates on both. | ✅ | ✅ |
+| III. Test-first, eval-backed | pytest for deterministic code with fakes; simulated-tutee eval suite with checks mapped to SC-001/002/003/008; load profiles verify SC-005/006/007 before release; CI gates on tests and evals. | ✅ | ✅ |
 | IV. Privacy and consent | Consent before collection (`awaiting_consent` state); retention jobs 90 days / 1 year; deletion on request; logs carry IDs only; secrets via env; service account scoped to one sheet. | ✅ | ✅ |
 | V. Small, reversible steps | One service, one DB file, no external queue; outbox and per-number locks give idempotency; dedupe on `wa_message_id` and Lead ID. | ✅ | ✅ (one justified deviation below) |
 
@@ -95,7 +99,9 @@ src/lead_capture/
 │   ├── planner.py          # Missing fields → next instruction
 │   ├── llm.py              # Claude client: extraction + reply calls
 │   ├── guards.py           # Question/word/currency/language checks
-│   └── dispatcher.py       # Per-number lock + 2 s debounce
+│   ├── dispatcher.py       # Debounce, pulls turns from TurnQueue
+│   ├── turn_queue.py       # TurnQueue interface + in-process asyncio impl
+│   └── locks.py            # ConversationLock interface + in-memory impl
 ├── store/
 │   ├── db.py               # Engine/session
 │   ├── models.py           # Contact, Conversation, Message, LeadOutbox
@@ -115,9 +121,14 @@ prompts/assistant.md        # System prompt (tone, language, rules)
 config/lists.yaml           # Allowed values
 migrations/                 # Alembic
 evals/
-├── scenarios/*.yaml        # Scripted tutee conversations
+├── scenarios/*.yaml        # Tutee facts, style, expected outcome
+├── tutee.py                # Simulated tutee (small Claude model)
 ├── checks.py               # SC-mapped scoring
 └── runner.py
+load/
+├── locustfile.py           # capacity / burst / soak profiles
+├── signing.py              # Signed webhook payload builder
+└── reports/
 tests/
 ├── unit/                   # domain, planner, guards, states, ids, hours
 ├── contract/               # webhook payloads, sheet contract, extraction schema
@@ -140,6 +151,20 @@ service with a CLI. No frontend: the operations team works in the Google Sheet.
 5. **US4** — handoff triggers, `Handoffs` tab, silence during handoff, echo handling, resolution sync.
 6. **US5** — consent gate, deletion on request, retention jobs.
 7. **Polish** — non-text messages, burst debounce tuning, guard fallbacks, full eval suite, Dockerfile and deploy docs.
+8. **Verify under load** — Locust profiles (`capacity`, `burst`, `soak`) with the simulated tutee, stubbed-model mode, lead reconciliation report; run before release.
+
+The `TurnQueue` and `ConversationLock` interfaces are built in phase 2 (US1), not later, so the scaling path in research R14 needs no rework of the engine.
+
+## Scaling Path
+
+Summarised from [research.md R14](research.md). v1 is one process; each later
+step is triggered by a measured limit, not done up front.
+
+1. **Tune model calls** (first limit: Claude latency / rate limits).
+2. **Move leads off the Sheet** to PostgreSQL and/or a CRM via a new `LeadRepository` implementation.
+3. **PostgreSQL for the bot store** (config change).
+4. **Scale out**: stateless webhook receivers → queue partitioned by WhatsApp number → autoscaled workers; jobs in one worker or cron.
+5. **Operate at scale**: tenants, metrics and alerts, model fallback route.
 
 ## Complexity Tracking
 

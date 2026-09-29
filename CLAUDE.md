@@ -38,10 +38,11 @@ Stack (from `specs/001-whatsapp-lead-capture/plan.md`): Python 3.12, FastAPI, Py
 uv sync                          # install
 uv run alembic upgrade head      # migrate local store
 uv run pytest                    # tests (no network)
-uv run lead-capture eval         # conversation evals (real model)
+uv run lead-capture eval         # conversation evals (real model, simulated tutee)
+uv run lead-capture load --profile capacity|burst|soak   # load tests (before release)
 uv run lead-capture chat         # terminal chat with the engine
 uv run uvicorn lead_capture.app:app --port 8000   # run the service
 uv run ruff check . && uv run ruff format --check .   # lint
 ```
 
-Code lives in `src/lead_capture/`; prompts in `prompts/`; allowed values in `config/lists.yaml`; evals in `evals/`.
+Code lives in `src/lead_capture/`; prompts in `prompts/`; allowed values in `config/lists.yaml`; evals in `evals/`; load tests in `load/`. Scaling path: `specs/001-whatsapp-lead-capture/research.md` R14.

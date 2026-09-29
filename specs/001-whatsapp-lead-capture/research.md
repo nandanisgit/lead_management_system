@@ -118,9 +118,11 @@ be re-checked against current documentation during the Build stage.
 
 ## R8. Concurrency and message bursts
 
-- **Decision**: Process one conversation at a time per WhatsApp number (an
-  in-process per-number lock), with a 2-second debounce so several quick
-  messages are answered as one turn.
+- **Decision**: Process one conversation at a time per WhatsApp number, with a
+  2-second debounce so several quick messages are answered as one turn. Both
+  sit behind a `ConversationLock` interface, and inbound turns flow through a
+  `TurnQueue` interface; v1 implements both in-process (asyncio), so a
+  Redis/SQS queue and a shared lock can replace them later (see R14).
 - **Rationale**: Prevents interleaved replies and double extraction; 2 s keeps
   total reply time within the 5 s target.
 - **Alternatives considered**: no debounce (fragmented replies); longer
@@ -144,20 +146,32 @@ be re-checked against current documentation during the Build stage.
 - **Decision**:
   - **pytest** for unit, contract and integration tests; the Claude client,
     WhatsApp sender and sheet repository are replaced by fakes in these.
-  - **Eval suite** (`evals/`): scripted tutee conversations in YAML (English,
-    Hindi, Hinglish, typos, multi-field messages, corrections, out-of-area,
-    budget-unsure, handoff requests, other languages). A runner drives the
-    real conversation engine against the real model and scores each run with
-    deterministic checks mapped to spec success criteria: required fields
-    captured and valid (SC-001), assistant message count (SC-002), no re-asked
-    field and no suggested amount (SC-003), handoff honoured (SC-008).
-    An optional model-graded "sounds human" score is reported but not gating.
+  - **Eval suite** (`evals/`) with a **simulated tutee**. Each scenario in
+    `evals/scenarios/*.yaml` defines an opening message, the tutee's true facts
+    (`tutee_facts`), a style (English / Hindi / Hinglish, short replies,
+    typos…) and the expected outcome. A small, cheap Claude model
+    (`EVAL_TUTEE_MODEL`, e.g. `claude-haiku-4-5`) plays the tutee and answers
+    the bot's questions **only from those facts**, in that style. The real
+    conversation engine and model run against it, with fake WhatsApp and an
+    in-memory sheet.
+  - Each scenario runs several times (default 3) because replies vary. Checks
+    are deterministic and mapped to the spec:
+    recorded lead equals `tutee_facts` field by field (SC-001); assistant
+    messages ≤ 8 (SC-002); no field asked twice and no amount suggested
+    (SC-003); ≤ 2 questions and matching language per message (FR-001/002);
+    expected outcome — lead recorded, closed out-of-area, handed over
+    (user stories). An optional model-graded "sounds human" score is reported
+    but not gating.
+  - A few scenarios keep **fixed tutee lines** where exact wording matters
+    (a voice-note placeholder, "STOP", a Tamil opener, a replayed duplicate).
   - CI (GitHub Actions): lint + tests on every PR; evals on PRs touching
     `src/lead_capture/conversation/`, `prompts/` or `evals/`, with a pass-rate
     threshold of 95% per check.
-- **Rationale**: Constitution Principle III — deterministic code gets tests;
-  non-deterministic conversation gets evals tied to the spec.
-- **Alternatives considered**: manual QA transcripts only (not repeatable);
+- **Rationale**: Constitution Principle III. A simulated tutee avoids brittle
+  scripts (the bot won't always ask in the same order) and lets the eval
+  compare the recorded lead exactly against known facts.
+- **Alternatives considered**: fully scripted tutee lines (break whenever the
+  question order changes); manual QA transcripts only (not repeatable);
   exact-match snapshot tests of model replies (brittle).
 
 ## R11. Deployment
@@ -183,3 +197,58 @@ be re-checked against current documentation during the Build stage.
   validator that depends on them.
 - **Alternatives considered**: reading lists from the sheet at runtime (ops
   edits could silently break validation).
+
+## R13. Load and performance testing
+
+- **Decision**: [Locust](https://locust.io/) load scenarios in `load/`, run via
+  `lead-capture load --profile <name>` in the Verify stage before each release
+  (not on every PR). The load generator sends correctly signed webhook
+  payloads, and a simulated-tutee driver answers the bot's replies so full
+  conversations complete.
+
+  | Profile | Setup | Load | Pass criteria |
+  |---|---|---|---|
+  | `capacity` | Claude replaced by a stub with 1–3 s random delay; fake WhatsApp; in-memory sheet | ramp to 100 concurrent tutees | webhook ack p99 < 1 s; 0 errors; 0 lost or duplicate messages |
+  | `burst` | real Claude API; fake WhatsApp; a **test** Google Sheet | 30 tutees start within 60 s and complete full chats; peaks of 5 inbound msg/s for 10 min | reply p95 < 5 s (SC-005); every confirmed lead in the sheet exactly once within 10 s (SC-006, SC-007); outbox back to 0 |
+  | `soak` | stubbed Claude; fake WhatsApp; in-memory sheet | steady 1 msg/s for 3 hours | memory stable (< 10% growth after warm-up); scheduled jobs keep running; no latency drift |
+
+  Results (latency percentiles, error counts, lead reconciliation) are saved
+  to `load/reports/<timestamp>.md`.
+- **Assumed peak** (no figure given yet): 30 tutees chatting at the same time
+  and 5 inbound messages per second for 10 minutes, e.g. right after an ad
+  goes live. Raise the `burst` profile when real traffic data exists.
+- **Rationale**: the spec sets latency and exactly-once targets that only
+  hold if they are measured under bursty traffic; the biggest risks (Claude
+  latency and rate limits, SQLite write serialisation, Sheets quota, the single
+  process) only show up under load.
+- **Alternatives considered**: k6 (excellent, but JavaScript — Locust keeps the
+  whole toolchain in Python and can reuse the eval tutee simulator); running
+  load tests on every PR (too slow and, with the real model, costly).
+
+## R14. Scaling path
+
+v1 is deliberately one process. These are the steps, in the order they are
+likely to be needed, and what triggers each.
+
+| Step | Trigger | Change |
+|---|---|---|
+| 1. Tune the model calls | `burst` reply p95 > 5 s, or Claude 429s | higher Anthropic usage tier; prompt caching; smaller model for extraction; optionally merge extraction + reply into one call; cap concurrent model calls |
+| 2. Move leads off the Sheet | > ~30k lead rows, several ops users editing at once, or Sheets 429s | new `LeadRepository` implementation for PostgreSQL and/or a CRM (Zoho, HubSpot, Salesforce); the Sheet becomes a read-only export |
+| 3. PostgreSQL for the bot store | before running more than one instance | change `DATABASE_URL`; Alembic migrations already apply |
+| 4. Scale out | one instance can't keep reply p95 < 5 s | stateless webhook receivers → queue partitioned by WhatsApp number (Redis Streams, SQS FIFO or Cloud Tasks) → autoscaled conversation workers; scheduled jobs in one dedicated worker or cron via the CLI |
+| 5. Operate at scale | multiple numbers, cities or brands; high volume | tenant ID across tables and lists; metrics and alerts (reply latency, queue depth, outbox backlog, model errors, cost per lead); fallback route to Claude (e.g. AWS Bedrock or Google Vertex AI) |
+
+**Seams built in v1 so these steps stay small:**
+
+- `LeadRepository` — sheet today, database or CRM later (step 2).
+- SQLAlchemy + Alembic — SQLite today, PostgreSQL later (step 3).
+- `TurnQueue` interface — incoming turns go through it; v1 uses an in-process
+  asyncio implementation, later a Redis/SQS one (step 4).
+- `ConversationLock` interface — per-number lock and debounce; v1 in-memory,
+  later a PostgreSQL advisory lock or queue partitioning (step 4).
+- Idempotency on WhatsApp message ID and Lead ID, and the lead outbox — make
+  retries and multiple workers safe (step 4).
+- Every scheduled job is also a CLI command — can move to cron or a single
+  worker without code changes (step 4).
+- The model name is configuration — per-call model choice without code changes (step 1).
+

@@ -26,6 +26,8 @@ uv run lead-capture sync-lists    # writes config/lists.yaml into the Lists tab
 | Variable | Notes |
 |---|---|
 | `ANTHROPIC_API_KEY`, `LLM_MODEL` | default `claude-sonnet-5-5` |
+| `EVAL_TUTEE_MODEL` | model that plays the tutee in evals and load tests, e.g. `claude-haiku-4-5` |
+| `LOAD_TEST_SHEET_ID` | a separate **test** Google Sheet for the `burst` load profile (never the real one) |
 | `WA_PHONE_NUMBER_ID`, `WA_ACCESS_TOKEN`, `WA_APP_SECRET`, `WA_VERIFY_TOKEN`, `WA_API_VERSION` | see [contracts/whatsapp-webhook.md](contracts/whatsapp-webhook.md) |
 | `LEAD_SHEET_ID`, `GOOGLE_SERVICE_ACCOUNT_FILE` | service-account JSON path (never committed) |
 | `DATABASE_URL` | default `sqlite:///data/lead_capture.db` |
@@ -40,8 +42,22 @@ uv run lead-capture eval --scenario hinglish_home_dwarka   # one scenario
 ```
 
 Expected: all tests pass; every eval check at ≥ 95% pass rate (see
-[research.md R10](research.md)). The eval report is written to
-`evals/reports/<timestamp>.md`.
+[research.md R10](research.md)). In each eval a simulated tutee answers only
+from the scenario's `tutee_facts`, and the recorded lead is compared with those
+facts. The eval report is written to `evals/reports/<timestamp>.md`.
+
+## Load testing (before each release)
+
+```bash
+uv run lead-capture load --profile capacity   # stubbed model: webhook + infra capacity
+uv run lead-capture load --profile burst      # real model + test sheet: 30 tutees at once
+uv run lead-capture load --profile soak       # stubbed model: 3 hours steady traffic
+```
+
+Pass criteria per profile are in [research.md R13](research.md); for `burst`:
+reply p95 < 5 s, every confirmed lead in the test sheet exactly once within
+10 s, outbox back to 0. Reports go to `load/reports/<timestamp>.md`. The
+`burst` profile makes real Claude calls, so it uses API credits.
 
 ## Local conversation without WhatsApp
 
