@@ -108,7 +108,9 @@ Tutees are told what is stored and why before anything is saved, and can ask for
 - The tutee gives a contradictory detail later ("actually Class 10, not 9"): the latest value replaces the earlier one and is shown in the summary.
 - The tutee gives a value outside the allowed lists (e.g. an unknown board or an unrecognisable class): the assistant asks a clarifying question rather than guessing.
 - The tutee picks mode "either" and is outside Delhi/NCR: the lead is recorded as online.
-- The tutee returns after more than 24 hours: their new message reopens WhatsApp's 24-hour service window, so the assistant replies normally and continues from the captured details. Approved template messages are needed only when the business itself starts or continues a conversation after the window has closed (for example future reminders); v1 sends no such messages.
+- The tutee returns after more than 24 hours: their new message reopens WhatsApp's 24-hour service window, so the assistant replies normally and continues from the captured details. The business never messages first and sends no templates.
+- A reply cannot be sent inside the window (for example the service was down for more than 24 hours after the tutee's last message): the reply is dropped and logged, the conversation stays as it is, and it resumes when the tutee writes again.
+- A human agent (after handoff) must reply within 24 hours of the tutee's last message; after that neither the bot nor the team can message the tutee until they write again. With operations hours of 10 AM–5 PM every day, a handoff always leaves at least 17 hours of working-window time.
 - The person chatting appears to be a minor without a parent involved (a student in Class 1–12 chatting for themselves, or other clear signs of being under 18): the assistant keeps strictly to requirement questions, asks for a parent or guardian's name and relationship before the summary, and marks the lead so the operations team contacts the parent (FR-029).
 - The tutee sends many messages quickly before the assistant replies: they are treated as one turn and answered together.
 - The tutee asks about fees, tutor names or availability: the assistant explains the team will share those details and continues gathering requirements.
@@ -149,7 +151,7 @@ Tutees are told what is stored and why before anything is saved, and can ask for
 - **FR-019**: System MUST track each conversation as in progress, stalled (no reply for 24 hours), handed over to a human, completed (lead recorded) or closed (with a reason: declined consent, not interested, out of area, opted out).
 - **FR-020**: System MUST resume a stalled or returning conversation from the details already captured.
 - **FR-021**: System MUST allow multiple leads from one WhatsApp number for different students and MUST prevent more than one active lead for the same number and student.
-- **FR-022**: System MUST NOT send free-form messages when the tutee's last message is older than WhatsApp's 24-hour service window; any business-initiated message outside the window MUST be an approved template message. A tutee's new message reopens the window. (v1 sends no business-initiated messages; the rule guards delayed sends and future reminders.)
+- **FR-022**: System MUST only send messages as replies within WhatsApp's 24-hour service window after the tutee's last message. It MUST NOT send business-initiated messages or message templates of any kind (no reminders, re-engagement, follow-ups or broadcasts). A send that would fall outside the window MUST be dropped and logged (IDs only); a tutee's new message reopens the window.
 
 **Human handoff**
 
@@ -191,7 +193,7 @@ Tutees are told what is stored and why before anything is saved, and can ask for
 
 ## Assumptions
 
-- The business has an approved WhatsApp Business account and phone number, and message templates for re-engagement and handover can be approved.
+- The business has an approved WhatsApp Business account and phone number. No message templates are needed: all conversations are tutee-initiated.
 - The operations lead register (v1) is the team's shared spreadsheet described in `intent.md` §9.1; the team works in it directly and owns everything after status NEW.
 - Human agents are members of the operations team, working the same hours (10 AM–5 PM IST, every day), and reply from the same WhatsApp number.
 - A stalled conversation gets no automated reminder in v1; it simply resumes if the tutee writes again.

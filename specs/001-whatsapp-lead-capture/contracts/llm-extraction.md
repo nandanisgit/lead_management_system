@@ -93,7 +93,7 @@ code and includes:
 
 | Check | On failure |
 |---|---|
-| ≤ `conversation.max_questions_per_message` questions and ≤ `conversation.max_words_per_message` words | regenerate up to `llm.max_regenerations` times, then use the fixed template for the instruction |
+| ≤ `conversation.max_questions_per_message` questions and ≤ `conversation.max_words_per_message` words | regenerate up to `llm.max_regenerations` times, then use the fixed text for the instruction |
 | no ₹/Rs/number-with-currency not already stated by the tutee | same |
 | reply language matches `Contact.language` | same |
 | summary replies list exactly the validated values | build the summary from code, let the model phrase only the lead-in |

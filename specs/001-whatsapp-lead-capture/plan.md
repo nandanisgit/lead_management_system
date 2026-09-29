@@ -43,7 +43,7 @@ cost optimisations cut model cost by ≈ 70% (research R15/R16).
 
 **Performance Goals**: reply within 5 s p95 (SC-005); lead visible in sheet within 10 s of confirmation (SC-006); webhook acknowledged within 1 s
 
-**Constraints**: WhatsApp 24-hour window and template rules; Sheets API quotas; no personal data in logs; English/Hindi only; home tuition Delhi/NCR only; ops hours 10 AM–5 PM IST daily
+**Constraints**: tutee-initiated conversations only — replies within WhatsApp's 24-hour window, no templates or business-initiated messages; Sheets API quotas; no personal data in logs; English/Hindi only; home tuition Delhi/NCR only; ops hours 10 AM–5 PM IST daily
 
 **Cost (estimate, research R15)**: ≈ ₹5 per completed lead with the default optimisations in R16 (≈ ₹13.5 without them); service messages on WhatsApp billable from 1 Oct 2026
 

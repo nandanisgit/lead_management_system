@@ -61,7 +61,7 @@ Transcript entry. Deleted after 90 days (FR-026).
 | `contact_id` | FK → Contact | |
 | `wa_message_id` | text, unique | deduplication key (FR-017) |
 | `direction` | enum | `in` / `out` / `echo` (sent by a human from the Business app) |
-| `type` | enum | `text` / `interactive` / `template` / `unsupported` |
+| `type` | enum | `text` / `interactive` / `unsupported` |
 | `body` | text | never written to logs (FR-027) |
 | `created_at` | timestamp | |
 

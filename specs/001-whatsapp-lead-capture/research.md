@@ -32,7 +32,7 @@ be re-checked against current documentation during the Build stage.
   keeping the conversation natural (G1). Code, not the model, decides the stage
   (consent → collecting → confirming → completed) and which fields are missing.
 - **Guardrails in code**: reject replies with more than two questions or over
-  ~60 words (regenerate once, then fall back to a template phrase); reject any
+  ~60 words (regenerate once, then fall back to a fixed text); reject any
   reply containing a currency amount the tutee did not state (FR-006).
 - **Cost-saving defaults** (details and config keys in R16): turns that code
   can answer on its own (button taps, greeting and consent, summary, closing)
@@ -58,9 +58,11 @@ be re-checked against current documentation during the Build stage.
   - Use interactive **reply buttons** (max 3) for mode, consent and summary
     confirmation, and an interactive **list** for board; always accept typed
     text too (FR-004).
-  - Outside the 24-hour window, send only approved templates (FR-022).
+  - Conversations are tutee-initiated only: the bot replies within the
+    24-hour window and never sends templates or business-initiated messages
+    (FR-022); a send that would fall outside the window is dropped and logged.
 - **Rationale**: Official, no third-party BSP fee required, supports
-  interactive messages and templates.
+  interactive messages.
 - **Alternatives considered**: a Business Solution Provider (Wati, Gupshup,
   etc.) — adds cost and a dependency; unofficial WhatsApp Web automation —
   violates WhatsApp terms.
@@ -274,10 +276,13 @@ numbers once the service logs messages and tokens per conversation (see
 | Bot messages per conversation (average across completed and abandoned) | 8 | spec SC-002 target (≤ 8 for completed leads) |
 | Conversations that become leads | 60% | spec SC-004 target |
 | Tutee turns (model calls ×2) per conversation | ~9 completed, ~4 abandoned | plan: one extraction + one reply call per turn |
-| Templates sent by the bot | ~0 in v1 | no automatic reminders in v1 (spec assumptions) |
+| Templates sent by the bot | none | all conversations are tutee-initiated (FR-022) |
 | Volumes modelled | 50 / 150 / 300 conversations per day | plan scale (a few hundred per day) |
 
 ### 1. WhatsApp Business Platform (Meta)
+
+This app sends **no templates** (FR-022), so only the first row applies; the
+template rows are listed for reference.
 
 Meta charges **per delivered message** from the business, by message type and
 the recipient's country. Messages from tutees are always free. The Cloud API
@@ -379,12 +384,12 @@ The language model is about 80–85% of running cost; WhatsApp about 13%.
 1. **Model choice per call** — Haiku for extraction (−26% of model cost), then test Haiku for replies too (−50%).
 2. **Fewer bot messages per conversation** — lowers both WhatsApp and model cost; the "≤ 8 messages" target (SC-002) is also a cost target. Never split one reply into several messages.
 3. **Click-to-WhatsApp ads** as the entry point — conversations inside the 72-hour free window have no WhatsApp charge.
-4. **Shorter context** — cap transcript sent to the model (plan: last 20 messages) and keep the system prompt cached.
-5. **Avoid marketing templates** — if reminders are added later, get them approved as utility (≈ ₹0.115) rather than marketing (≈ ₹0.86).
+4. **Shorter context** — cap transcript sent to the model (`llm.context_messages`, default 6) and keep the system prompt cached.
+5. **No templates** — the design sends none (FR-022). If reminders were ever added, they would need a spec change and would cost ≈ ₹0.115 (utility) to ≈ ₹0.86 (marketing) each.
 
 ### Tracking
 
-- Log per conversation (IDs only, no personal data): bot messages sent, templates sent by category, model calls, input/output/cached tokens per model.
+- Log per conversation (IDs only, no personal data): bot messages sent, model calls, input/output/cached tokens per model.
 - `/healthz` stays personal-data-free; a `lead-capture costs --month YYYY-MM` CLI command summarises messages, tokens and estimated cost per conversation and per lead, using rates from configuration (`config/rates.yaml`) so they can be updated when Meta or Anthropic change prices.
 - Eval and load-test reports include token usage and estimated cost per run.
 
@@ -418,7 +423,7 @@ conversation engine.
 | Interface | Responsibility | v1 adapter | Test adapter | Later options |
 |---|---|---|---|---|
 | `LLMClient` | `extract(turn) -> ExtractionResult`; `write_reply(turn, instruction) -> str`; reports token usage | `AnthropicLLMClient` | `FakeLLMClient` (scripted), `StubLLMClient` (delay only, for load tests) | Claude via AWS Bedrock / Google Vertex; another provider |
-| `MessagingChannel` | parse and verify inbound webhooks into normalised `InboundMessage`s; `send_text`, `send_choices` (buttons/list), `send_template`; declares `capabilities` (max buttons, template rules, service window) | `WhatsAppCloudChannel` | `FakeChannel` | Telegram, Instagram DM, web chat, SMS; a WhatsApp BSP |
+| `MessagingChannel` | parse and verify inbound webhooks into normalised `InboundMessage`s; `send_text`, `send_choices` (buttons/list); declares `capabilities` (max buttons, template rules, service window) | `WhatsAppCloudChannel` | `FakeChannel` | Telegram, Instagram DM, web chat, SMS; a WhatsApp BSP |
 | `LeadRepository` | append/find/delete leads, handoff rows, lists sync (contract in `contracts/lead-sheet.md`) | `GoogleSheetLeadRepository` | `InMemoryLeadRepository` | PostgreSQL, Zoho / HubSpot / Salesforce CRM |
 | `TurnQueue` | deliver turns in order per contact | in-process asyncio | same | Redis Streams, SQS FIFO, Cloud Tasks |
 | `ConversationLock` | one turn at a time per contact | in-memory | same | PostgreSQL advisory lock, Redis |
@@ -431,8 +436,8 @@ Rules:
   `Choice`, `ExtractionResult`, `TokenUsage`). No vendor SDK imports outside
   `adapters/`.
 - The engine asks the channel what it can do (`capabilities`) instead of
-  assuming WhatsApp — e.g. a channel without buttons gets numbered options, a
-  channel without a 24-hour window never needs templates.
+  assuming WhatsApp — e.g. a channel without buttons gets numbered options, and the
+  engine reads the reply window length from `capabilities.window_hours`.
 - Adapters are chosen by name in `config/settings.yaml`
   (`llm.provider`, `channel.provider`, `leads.repository`, …) through a small
   registry; secrets stay in environment variables.
