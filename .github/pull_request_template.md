@@ -15,3 +15,4 @@
 - [ ] Previous stage's artifact exists and was reviewed
 - [ ] Build PRs: tests written first and passing; tasks ticked in `tasks.md`
 - [ ] Conversation changes: evals added or updated and passing
+- [ ] Coding guidelines followed (docs/coding-guidelines.md): no hard-coded fields, texts or tunables; vendor code only in adapters; every new module/class/function documented

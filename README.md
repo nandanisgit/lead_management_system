@@ -27,4 +27,14 @@ Claude Code. In Claude Code, run the stages in order:
 
 Commit messages use stage prefixes (`spec:`, `plan:`, `tasks:`, `feat(G3):`,
 `eval:`, `release:`), so `git log --oneline` shows the stage history.
-Agent guidance is in [`CLAUDE.md`](CLAUDE.md).
+Agent guidance is in [`CLAUDE.md`](CLAUDE.md); coding rules in
+[`docs/coding-guidelines.md`](docs/coding-guidelines.md).
+
+## Where things are configured
+
+| To change… | Edit |
+|---|---|
+| Tutor-requirement fields, allowed values, questions, summary, sheet columns | `config/requirement.yaml` |
+| The assistant's fixed texts and language markers | `config/messages.yaml` |
+| Models, limits, timeouts, retention, schedules, costs | `config/settings.yaml` |
+| Secrets (API keys, sheet ID) | `.env` (copy `.env.example`) |

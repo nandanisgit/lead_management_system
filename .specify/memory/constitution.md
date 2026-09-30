@@ -62,6 +62,19 @@ External services and tunable numbers are never hard-wired into business logic.
   record the settings used, alongside quality, latency and cost results, so a
   cheaper or faster setting is adopted only when the evals still pass.
 
+### VII. Documented, Data-Driven Code
+Code explains itself and knows as little as possible about the product's data.
+
+- **One place for the requirement fields.** Every tutor-requirement field — its type,
+  allowed values, when it is required, the question asked, labels, summary line and sheet
+  column — is defined only in `config/requirement.yaml`. Validation, the model's tool
+  schema, questions, summary, lead row and eval checks are generated from it, so adding or
+  removing a field needs no code change. Fixed user-facing texts live in
+  `config/messages.yaml`. Code refers to specific fields only through config.
+- **Every module, class and function says why it exists**, in a docstring that links the
+  requirement or decision it serves (FR-/SC-/research IDs). Enforced by `ruff` and review.
+- Details and the procedure for adding a field: `docs/coding-guidelines.md`.
+
 ## Product Constraints
 
 - Channel: WhatsApp Business Platform (Cloud API). Conversations are started
@@ -108,4 +121,4 @@ Reviewers check every PR against these principles; any deviation must be
 justified in the plan's complexity tracking section. Runtime guidance for
 agents is in [`CLAUDE.md`](../../CLAUDE.md).
 
-**Version**: 1.1.1 | **Ratified**: 2026-09-29 | **Last Amended**: 2026-09-29 (1.1.0 added Principle VI; 1.1.1 tutee-initiated only, no templates)
+**Version**: 1.2.0 | **Ratified**: 2026-09-29 | **Last Amended**: 2026-09-30 (1.1.0 Principle VI; 1.1.1 tutee-initiated only, no templates; 1.2.0 Principle VII)

@@ -6,7 +6,8 @@ Guidance for Claude Code (and other coding agents) working in this repository.
 
 1. [`intent.md`](intent.md) — what this system is for, goals G1–G7, non-goals, success criteria.
 2. [`.specify/memory/constitution.md`](.specify/memory/constitution.md) — how we build it: principles, workflow, stage rules.
-3. The current feature folder under `specs/NNN-name/` (spec → plan → tasks), if you are working on a feature.
+3. [`docs/coding-guidelines.md`](docs/coding-guidelines.md) — how code is written here: no hard-coding, interfaces, documentation.
+4. The current feature folder under `specs/NNN-name/` (spec → plan → tasks), if you are working on a feature.
 
 If a request conflicts with `intent.md` or the constitution, stop and ask.
 If something is unclear, add it to the spec's open questions instead of guessing.
@@ -31,6 +32,8 @@ Work moves through stages, one feature branch at a time:
 - Don't build anything in the intent's Non-goals list.
 - Never call a vendor SDK (Anthropic, WhatsApp/Meta, Google) from conversation or domain code — go through `LLMClient`, `MessagingChannel`, `LeadRepository` and the other interfaces; vendor code lives only in its adapter module.
 - Never hard-code performance or cost numbers (models, token limits, context size, timeouts, retries, concurrency, debounce, thresholds, schedules, retention, rates) — add them to `config/settings.yaml` with a validated default. See constitution Principle VI and research R16.
+- Never hard-code tutor-requirement fields (names, allowed values, questions, labels, summary lines, sheet columns) in code, prompts or tests — they live only in `config/requirement.yaml`. Fixed texts live in `config/messages.yaml`. Adding or removing a field must not need a code change (docs/coding-guidelines.md §1).
+- Every module, class and function gets a docstring saying why it exists (constitution Principle VII; ruff enforces it).
 
 ## Commands
 
@@ -47,4 +50,4 @@ uv run uvicorn lead_capture.app:app --port 8000   # run the service
 uv run ruff check . && uv run ruff format --check .   # lint
 ```
 
-Code lives in `src/lead_capture/`; prompts in `prompts/`; settings in `config/settings.yaml`; allowed values in `config/lists.yaml`; evals in `evals/`; load tests in `load/`. Scaling path: `specs/001-whatsapp-lead-capture/research.md` R14.
+Code lives in `src/lead_capture/`; prompts in `prompts/`; settings in `config/settings.yaml`; requirement fields and allowed values in `config/requirement.yaml`; fixed texts in `config/messages.yaml`; evals in `evals/`; load tests in `load/`. Scaling path: `specs/001-whatsapp-lead-capture/research.md` R14.
