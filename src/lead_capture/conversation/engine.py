@@ -147,9 +147,28 @@ class Engine:
         """True when every message in the batch is a recognised tap."""
         return all(self._is_tap(i) for i in items)
 
+    def _only_structured(self, items) -> bool:
+        """True when every message is a tap or a shared phone number (nothing to interpret)."""
+        return all(self._is_tap(i) or i.shared_phone for i in items)
+
     def _deterministic(self, items) -> bool:
-        """Taps can be handled without the model when the cost-saving setting is on."""
-        return self.cfg.llm.skip_for_deterministic_turns and self._only_taps(items)
+        """Taps and shared numbers need no model when the cost-saving setting is on."""
+        return self.cfg.llm.skip_for_deterministic_turns and self._only_structured(items)
+
+    def _shared_fields(self, items) -> dict:
+        """FR-032: a number shared with the app's contact button fills the channel-phone fields."""
+        phone = next((i.shared_phone for i in reversed(items) if i.shared_phone), None)
+        return {name: phone for name in self.schema.channel_phone_fields()} if phone else {}
+
+    def _channel_fields(self, turn: Turn, req: Requirement) -> dict:
+        """FR-032: when the channel address is the tutee's number (WhatsApp), use it as-is."""
+        if not self.sv.channel.capabilities.contact_is_phone:
+            return {}
+        return {
+            name: turn.contact.wa_number
+            for name in self.schema.channel_phone_fields()
+            if req.get(name) in (None, "")
+        }
 
     def _tap_fields(self, taps: list[str]) -> dict:
         """Field values chosen by tapping a field button ("<field>:<value>")."""
@@ -227,6 +246,8 @@ class Engine:
         extraction: ExtractionResult | None = None
         if taps and self._deterministic(turn.items):
             consent = "given" if "consent:yes" in taps else "declined"
+        elif not taps and self._only_structured(turn.items):  # a shared number: no answer yet
+            consent = "none"
         else:
             extraction = await self._extract(db, turn, Requirement())
             consent = extraction.signals.consent
@@ -273,18 +294,25 @@ class Engine:
             else:
                 extraction = await self._extract(db, turn, req)
         extraction = extraction or ExtractionResult()
-        fields = {**extraction.fields, **self._tap_fields(self._taps(turn.items))}
-        req, rejected = self._apply(conv, req, fields)
+        # what the tutee said or tapped, plus values the channel itself supplies (FR-032)
+        said = {
+            **extraction.fields,
+            **self._tap_fields(self._taps(turn.items)),
+            **self._shared_fields(turn.items),
+        }
+        from_channel = self._channel_fields(turn, req)
+        req, rejected = self._apply(conv, req, {**from_channel, **said})
         signals = None if deterministic else extraction.signals
         update_minor_flags(conv, req, signals, self.schema)
 
-        if signals is not None and not signals.understood and not fields:
+        if signals is not None and not signals.understood and not said:
             conv.misunderstand_streak += 1
             turn.replies.append(OutboundMessage(text=ft.text("REPHRASE", turn.lang)))
             return
         conv.misunderstand_streak = 0
 
-        if after_consent and not fields and not req.captured():
+        told_us = set(req.captured()) - set(from_channel)
+        if after_consent and not said and not told_us:
             turn.replies.append(OutboundMessage(text=ft.text("ASK_OPEN", turn.lang)))
             return
 
@@ -358,7 +386,7 @@ class Engine:
             {
                 "lead_id": lead_id,
                 "created_at": format_ist(now, self.cfg.ops.timezone, sheet.time_format),
-                "whatsapp_number": contact.wa_number,
+                "contact": contact.wa_number,
                 "language": turn.lang,
                 "source": conv.source,
                 "consent_at": format_ist(
@@ -427,7 +455,12 @@ class Engine:
             text = fixed_ask
         else:
             text = await self._model_reply(db, turn, req, instruction, fallback=fixed_ask)
-        turn.replies.append(ft.with_choices(text, choices, turn.lang))
+        reply = ft.with_choices(text, choices, turn.lang)
+        if self.sv.channel.capabilities.can_request_phone and set(fields) & set(
+            self.schema.channel_phone_fields()
+        ):
+            reply.phone_request_label = ft.text("SHARE_PHONE_BUTTON", turn.lang)
+        turn.replies.append(reply)
 
     def _fixed_ask(self, fields, req: Requirement, lang: str, clarify=None) -> str:
         """The configured question for ``fields``.

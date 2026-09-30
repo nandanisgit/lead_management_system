@@ -28,13 +28,15 @@ def ext(lang="en", **fields) -> ExtractionResult:
 
 
 class Harness:
-    def __init__(self, session_factory, at=datetime(2026, 9, 29, 15, 0), leads=None, **over):
+    def __init__(
+        self, session_factory, at=datetime(2026, 9, 29, 15, 0), leads=None, channel=None, **over
+    ):
         conversation = {"debounce_ms": 0, **over.pop("conversation", {})}
         self.settings = load_settings(conversation=conversation, **over)
         self.llm = FakeLLMClient(
             default_reply=lambda turn, ins: f"MODEL {ins.kind} {ins.params.get('fields')}"
         )
-        self.channel = FakeChannel()
+        self.channel = channel or FakeChannel()
         self.leads = leads or memory_repo()
         self.clock = FrozenClock(at)
         self.sv = build_services(

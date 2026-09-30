@@ -67,12 +67,15 @@ lists:
 # area/city, budget_min before budget_max) must come first.
 #
 # type:            text | choice | multi_choice | grade | positive_int | int_range |
-#                  date_or_asap | email_address | postal_code
+#                  date_or_asap | email_address | postal_code | phone_number
 # required:        true | false | {when: <condition>}      (false = recorded if volunteered)
 # conditions:      {field: f, equals|not_equals: v} | {field: f, in|not_in: [..]} |
 #                  {field: f, in_list|not_in_list: list_name} | {field: f, is_set: true} |
 #                  {flag: minor_alone} | {all: [..]} | {any: [..]}
 # pii: true        values are never written to logs
+# channel_phone:   true = filled from the chat app when it knows the tutee's number
+#                  (WhatsApp); otherwise asked with the app's "share phone number"
+#                  button where it has one (Telegram) — FR-032
 fields:
   contact_name:
     type: text
@@ -83,6 +86,18 @@ fields:
     label: {en: your name, hi: aapka naam}
     ask: {en: "May I know your name?", hi: "Aapka naam kya hai?"}
     llm: {description: "Name of the person chatting"}
+
+  phone:
+    type: phone_number
+    country_code: "91"                   # used when a 10-digit number is given without it
+    national_digits: 10
+    channel_phone: true
+    required: true
+    pii: true
+    label: {en: phone number, hi: phone number}
+    ask: {en: "What's the best phone number for our team to call you on?",
+          hi: "Hamari team aapko kis phone number par call kare?"}
+    llm: {description: "Phone number the tutee gives for the team to call, as written"}
 
   relationship:
     type: choice
@@ -308,6 +323,7 @@ ask_groups:
   - fields: [contact_name, relationship]
     ask: {en: "May I know your name, and are you the parent or the student?",
           hi: "Aapka naam kya hai, aur aap parent hain ya student?"}
+  - fields: [phone]
   - fields: [student_name]
   - fields: [grade_level, board]
     ask: {en: "Which class is[ {student_name}] in, and which board — CBSE, ICSE or State?",
@@ -327,7 +343,7 @@ ask_groups:
           hi: "Apne parent ya guardian ka naam bata sakte ho, aur woh aapke kya lagte hain? Hamari team unse baat karegi."}
 
 # ---------------------------------------------------------------- rules using fields
-student_key_field: student_name          # one active lead per WhatsApp number + this field
+student_key_field: student_name          # one active lead per chat (number/Telegram chat) + this field
 
 minor_alone_when:                        # FR-029
   all:
@@ -386,7 +402,7 @@ sheet:
     columns:
       - {header: Lead ID, value: meta.lead_id}
       - {header: Created At, value: meta.created_at}
-      - {header: WhatsApp Number, value: meta.whatsapp_number}
+      - {header: Phone Number, value: field.phone}
       - {header: Contact Name, value: field.contact_name}
       - {header: Relationship, value: field.relationship}
       - {header: Student Name, value: field.student_name}
@@ -425,7 +441,7 @@ sheet:
     columns:
       - {header: Handoff ID, value: meta.handoff_id}
       - {header: Time, value: meta.time}
-      - {header: WhatsApp Number, value: meta.whatsapp_number}
+      - {header: Contact, value: meta.contact}
       - {header: Name, value: meta.name}
       - {header: Reason, value: meta.reason}
       - {header: Captured So Far, value: meta.captured_so_far}

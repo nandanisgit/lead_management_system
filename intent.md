@@ -1,6 +1,6 @@
 # Intent: WhatsApp Tutor-Lead Capture
 
-**Status:** Draft · **Stage:** 0 — Intent · **Last updated:** 2026-09-29
+**Status:** Draft · **Stage:** 0 — Intent · **Last updated:** 2026-09-30
 
 > This file records **why** this system exists and **what "done" means**.
 > It is the source of truth for humans and AI coding agents. When a task conflicts
@@ -47,7 +47,7 @@ structured lead into the operational database** for the team to process.
 - Pricing quotes, payments, invoices or bookings
 - Scheduling demo classes
 - Tutor onboarding over WhatsApp
-- Channels other than WhatsApp (web chat, SMS, calls)
+- Channels other than WhatsApp and Telegram (web chat, SMS, calls)
 - Marketing broadcasts
 
 ## 6. Information to capture
@@ -57,6 +57,7 @@ structured lead into the operational database** for the team to process.
 | Field | Example | Notes |
 |---|---|---|
 | `contact_name` | "Priya" | Person chatting |
+| `phone` | +91 98765 43210 | Number the operations team calls. Taken from WhatsApp automatically; on Telegram the tutee shares it with one tap (or types it) |
 | `relationship` | parent / student / other | Who is chatting |
 | `student_name` | "Aarav" | May equal `contact_name` |
 | `grade_level` | Class 9, Class 12, BTech 2nd yr, Adult | Normalise to a standard list |
@@ -210,7 +211,7 @@ changing conversation logic.
 
 ## 10. Constraints
 
-- **Channel:** WhatsApp Business Platform (Cloud API) with an approved business number.
+- **Channels:** WhatsApp Business Platform (Cloud API) with an approved business number, and a Telegram bot (Bot API). Both reach the same conversation engine and lead sheet through the `MessagingChannel` interface; tutees use whichever app they prefer.
 - **Tutee-initiated only:** every conversation is started by the tutee. The bot only replies within WhatsApp's 24-hour window after the tutee's last message and never sends business-initiated messages or message templates (no reminders, re-engagement or broadcasts).
 - **Idempotency:** WhatsApp may deliver webhooks more than once — dedupe on `wa_message_id`.
 - **Latency:** reply within 5 seconds of an inbound message (p95).
@@ -254,6 +255,7 @@ v1 is done when:
 | D9 | Google Sheet as the operational DB for v1 | Ops team can use it immediately with no admin tools to build |
 | D10 | Conversation state and transcripts kept outside the sheet | They change on every message; the sheet would hit API limits and clutter the ops view |
 | D11 | All sheet access behind a `LeadRepository` interface | Makes the later move to a real database a contained change |
+| D12 | Telegram as a second channel; phone number a required field (2026-09-30) | Telegram bots need no business verification and are free, so tutees can reach us there too; Telegram hides the user's phone number, so it is asked for (one-tap share) instead of assumed |
 
 ## 13. Open questions
 

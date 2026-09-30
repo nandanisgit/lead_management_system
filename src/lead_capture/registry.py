@@ -84,13 +84,23 @@ def build_channel(s: Settings, secrets: Secrets) -> MessagingChannel:
 
         return WhatsAppCloudChannel(s.channel, secrets)
 
+    def telegram():
+        """Telegram Bot API (research R17)."""
+        from lead_capture.adapters.channels.telegram.channel import TelegramChannel
+
+        return TelegramChannel(s.channel, secrets)
+
     def fake():
         """In-memory channel (tests, `lead-capture chat`)."""
         from lead_capture.adapters.channels.fake import FakeChannel
 
         return FakeChannel()
 
-    return _pick("channel", s.channel.provider, {"whatsapp_cloud": whatsapp_cloud, "fake": fake})
+    return _pick(
+        "channel",
+        s.channel.provider,
+        {"whatsapp_cloud": whatsapp_cloud, "telegram": telegram, "fake": fake},
+    )
 
 
 def build_lead_repository(

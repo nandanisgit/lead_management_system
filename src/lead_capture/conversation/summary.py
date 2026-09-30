@@ -53,7 +53,7 @@ def lead_values(
 ) -> list[Any]:
     """Values for the bot-owned columns of the Leads tab, in configured column order.
 
-    ``meta`` carries non-field values (lead_id, created_at, whatsapp_number, language,
+    ``meta`` carries non-field values (lead_id, created_at, contact, language,
     source, consent_at). Status comes from config; the minor marker only for FR-029 leads.
     """
     sheet = schema.sheet

@@ -27,3 +27,14 @@ def test_phone_numbers_scrubbed_and_personal_fields_dropped():
 def test_ids_and_counts_kept():
     data = json.loads(render("turn_done", conversation_id=12, attempts=2))
     assert data["conversation_id"] == 12 and data["attempts"] == 2
+
+
+def test_http_client_request_logs_are_silenced():
+    """Request URLs can contain secrets (the Telegram bot token), so INFO logs are off."""
+    import logging
+
+    from lead_capture.logging import QUIET_LOGGERS, setup_logging
+
+    setup_logging("INFO")
+    for name in QUIET_LOGGERS:
+        assert logging.getLogger(name).getEffectiveLevel() >= logging.WARNING

@@ -545,3 +545,39 @@ Defaults 1–3 together: ≈ −70% model cost (R15). Options 4 and 5 are
 experiments: change the setting, run `lead-capture eval` and the `burst` load
 profile, and adopt only if every check still passes.
 
+## R17. Telegram as a second channel (2026-09-30, intent D12)
+
+- **Decision**: add a `TelegramChannel` adapter behind `MessagingChannel`, using the
+  Telegram **Bot API** over HTTPS (httpx, no SDK) with a **webhook** at
+  `/webhooks/telegram`.
+  - Authenticity: `setWebhook` registers a random `secret_token`; Telegram sends it in the
+    `X-Telegram-Bot-Api-Secret-Token` header on every update, and the adapter rejects
+    requests without it (the equivalent of WhatsApp's signature check). There is no GET
+    handshake.
+  - Inbound: private-chat `message` updates (text; a shared contact; anything else becomes
+    `unsupported`) and `callback_query` updates (inline-button taps → `choice_id`). Group
+    chats are ignored. Dedupe key: `tg-<update_id>`. A tutee's channel address is
+    `tg:<chat id>`. `/start <payload>` carries a campaign ID as the referral source.
+  - Outbound: `sendMessage`, plain text (no markup parsing), tap options as an **inline
+    keyboard** (`callback_data` = choice ID, ≤ 64 bytes, else numbered text), and a
+    one-time **reply keyboard with `request_contact`** when the phone number is asked.
+    Button taps are acknowledged with `answerCallbackQuery` on the next send.
+  - Registration: `lead-capture set-webhook <public-url>` calls `setWebhook` with the secret
+    and `allowed_updates = [message, callback_query]`.
+- **Phone number (FR-032)**: a `phone` field in `config/requirement.yaml` (type
+  `phone_number`, marked `channel_phone: true`). Channels declare `contact_is_phone`
+  (WhatsApp: yes → pre-filled) and `can_request_phone` (Telegram: yes → share button).
+  The `Leads` column "WhatsApp Number" becomes "Phone Number" (`field.phone`); the
+  `Handoffs` column becomes "Contact" (the channel address).
+- **Rationale**: WhatsApp needs a verified business (R3); Telegram needs none and is free,
+  so tutees who prefer it can use it and the service can be demoed without Meta. The
+  engine, prompts, validation and sheet are unchanged apart from the phone field.
+- **Security**: the bot token is part of every Bot API URL, so HTTP client request logging
+  is silenced (httpx/httpcore at WARNING) — the token must never reach logs.
+- **Alternatives considered**: long polling (`getUpdates`, no public URL needed) — would
+  need a second inbound path beside webhooks; kept as a later option for local use. A
+  Telegram SDK (python-telegram-bot) — heavier than the three HTTP calls needed.
+- **Settings (R16)**: `channel.provider: telegram`; `channel.telegram.api_base_url`,
+  `channel.telegram.buttons_per_row`. Secrets: `TELEGRAM_BOT_TOKEN`,
+  `TELEGRAM_WEBHOOK_SECRET`.
+

@@ -10,6 +10,7 @@ the code.
 - Docker (for production-like runs)
 - An Anthropic API key — or, for the first days, [Ollama](https://ollama.com) (free, see below)
 - A Meta app with WhatsApp Cloud API: phone number ID, access token, app secret, a verify token of your choice; coexistence enabled on the business number (see [research.md R4](research.md))
+- For Telegram instead of (or as well as) WhatsApp: a bot token from @BotFather (see "Telegram" below)
 - A native Google Sheet with tabs `Leads`, `Handoffs`, `Lists` and headers exactly as in [contracts/lead-sheet.md](contracts/lead-sheet.md), shared as **Editor** with a service-account email
 - For live webhook tests from a laptop: a tunnel such as `cloudflared` or `ngrok`
 
@@ -89,6 +90,32 @@ uv run lead-capture chat --number +919999900001
 Starts a terminal chat with the real conversation engine, a fake WhatsApp
 sender and (by default) the in-memory lead repository. Add `--sheet` to write
 to the real Google Sheet.
+
+## Telegram (second channel, research R17)
+
+No business verification, no cost. One-time setup:
+
+1. In Telegram, open **@BotFather**, send `/newbot`, choose a name and a username ending in
+   `bot`. Copy the token it gives you.
+2. In `.env` (never in code or chat):
+   ```bash
+   TELEGRAM_BOT_TOKEN=123456:ABC...
+   TELEGRAM_WEBHOOK_SECRET=$(openssl rand -hex 16)   # paste the generated value
+   ```
+3. Run the service on Telegram and expose it:
+   ```bash
+   LC__CHANNEL__PROVIDER=telegram uv run uvicorn lead_capture.app:app --port 8000
+   cloudflared tunnel --url http://localhost:8000
+   ```
+4. Register the webhook (repeat whenever the tunnel URL changes):
+   ```bash
+   LC__CHANNEL__PROVIDER=telegram uv run lead-capture set-webhook https://<tunnel>.trycloudflare.com
+   ```
+5. Open `t.me/<your_bot_username>` on your phone and press **Start**.
+
+The bot asks for a phone number after consent (FR-032) with a **Share my phone number**
+button; typing a number works too. To make Telegram the default, set
+`channel.provider: telegram` in `config/settings.yaml`.
 
 ## Live end-to-end check
 

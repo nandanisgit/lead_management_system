@@ -15,7 +15,9 @@ import re
 PHONE = re.compile(r"\+?\d[\d \-]{8,}\d")
 # Transport-level names that can carry personal data; requirement fields marked
 # ``pii: true`` in config/requirement.yaml are added by ``register_pii_fields``.
-FORBIDDEN_EXTRA = {"body", "text", "phone", "wa_number", "whatsapp_number", "profile_name"}
+FORBIDDEN_EXTRA = {"body", "text", "phone_number", "wa_number", "whatsapp_number", "profile_name"}
+# Loggers that would print request URLs (which can contain secrets) at INFO.
+QUIET_LOGGERS = ("httpx", "httpcore")
 _STD = set(logging.LogRecord("", 0, "", 0, "", (), None).__dict__) | {"message", "asctime"}
 
 
@@ -66,3 +68,6 @@ def setup_logging(level: str = "INFO", pii_fields: set[str] | None = None) -> No
     root = logging.getLogger()
     root.handlers[:] = [handler]
     root.setLevel(level)
+    # HTTP clients log full request URLs at INFO; the Telegram bot token is part of its URLs.
+    for name in QUIET_LOGGERS:
+        logging.getLogger(name).setLevel(logging.WARNING)

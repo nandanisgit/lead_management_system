@@ -169,6 +169,8 @@ Tutees are told what is stored and why before anything is saved, and can ask for
 **Abuse and cost protection**
 
 - **FR-030**: System MUST limit how many tutee turns it processes per WhatsApp number, per hour and per day (limits from configuration, defaults 30 per hour and 100 per day). When a limit is reached, System MUST send one fixed notice that the team will follow up, record the event (IDs only), and then neither reply nor call the language model for that number until the limit period has passed.
+- **FR-031** *(added 2026-09-30, intent D12)*: System MUST also accept conversations on Telegram, through the same conversation flow, validation and lead register as WhatsApp. A tutee on either channel is identified by that channel's own address (WhatsApp number, or Telegram chat), and every rule that applies per WhatsApp number applies per channel address. Telegram has no 24-hour window, but FR-022's other rules still apply: the bot only replies and never starts a conversation.
+- **FR-032** *(added 2026-09-30, intent D12)*: Every lead MUST carry a phone number the operations team can call. When the channel already provides it (WhatsApp), System MUST fill it in without asking. Otherwise (Telegram) System MUST ask for it after consent, offering the channel's one-tap "share my phone number" control where one exists and accepting a typed number too; the number is validated and normalised to international format before it is stored.
 
 **Minors**
 
@@ -199,6 +201,7 @@ Tutees are told what is stored and why before anything is saved, and can ask for
 ## Assumptions
 
 - The business has an approved WhatsApp Business account and phone number. No message templates are needed: all conversations are tutee-initiated.
+- Telegram needs only a bot token from @BotFather: no business verification and no cost. Tutees find the bot by its link (`t.me/<bot>`).
 - The operations lead register (v1) is the team's shared spreadsheet described in `intent.md` §9.1; the team works in it directly and owns everything after status NEW.
 - Human agents are members of the operations team, working the same hours (10 AM–5 PM IST, every day), and reply from the same WhatsApp number.
 - A stalled conversation gets no automated reminder in v1; it simply resumes if the tutee writes again.

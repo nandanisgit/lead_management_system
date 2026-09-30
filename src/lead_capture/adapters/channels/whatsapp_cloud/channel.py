@@ -33,6 +33,7 @@ class WhatsAppCloudChannel:
             max_list_rows=MAX_ROWS,
             has_service_window=True,
             window_hours=SERVICE_WINDOW_HOURS,
+            contact_is_phone=True,  # the sender's WhatsApp number is their phone number
         )
 
     def verify_subscription(self, params: Mapping[str, str]) -> str | None:

@@ -2,6 +2,8 @@
 
 ``ctx`` provides: ``channel``, ``payload(messages, valid=True) -> (headers, body)`` where each
 message is a dict with keys id, contact, text, is_echo (optional), choice_id (optional).
+Optionally ``message_id(raw_id)``: the ID the channel reports for a raw test ID (channels
+that build their own IDs, e.g. Telegram's "tg-<update_id>"); identity by default.
 """
 
 from __future__ import annotations
@@ -30,7 +32,8 @@ def check_inbound_normalised(ctx):
     headers, body = ctx.payload([{"id": "m1", "contact": "+919999900001", "text": "hi"}])
     msgs = ctx.channel.parse_inbound(headers, body)
     assert len(msgs) == 1 and isinstance(msgs[0], InboundMessage)
-    assert msgs[0].id == "m1" and msgs[0].text == "hi" and msgs[0].type == "text"
+    expected_id = getattr(ctx, "message_id", lambda raw: raw)("m1")
+    assert msgs[0].id == expected_id and msgs[0].text == "hi" and msgs[0].type == "text"
     assert msgs[0].contact.endswith("9999900001")
 
 
@@ -42,7 +45,8 @@ def check_duplicate_ids_preserved(ctx):
             {"id": "dup", "contact": "+919999900001", "text": "a"},
         ]
     )
-    assert [m.id for m in ctx.channel.parse_inbound(headers, body)] == ["dup", "dup"]
+    expected_id = getattr(ctx, "message_id", lambda raw: raw)("dup")
+    assert [m.id for m in ctx.channel.parse_inbound(headers, body)] == [expected_id] * 2
 
 
 def check_echo_flag(ctx):

@@ -49,10 +49,13 @@ conversation:
   off_topic_max_sentences: 1          # FR-007
 
 channel:
-  provider: whatsapp_cloud            # R3; also: fake
+  provider: whatsapp_cloud            # R3; also: telegram (R17), fake
   send_timeout_seconds: 5             # contracts/whatsapp-webhook.md
   max_retries: 3
   retry_backoff_seconds: 0.5          # base for exponential backoff on 429/5xx
+  telegram:                           # used when provider: telegram
+    api_base_url: https://api.telegram.org
+    buttons_per_row: 1                # one tap option per row reads best on phones
 
 leads:
   repository: google_sheet            # R5; also: in_memory

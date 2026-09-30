@@ -1,4 +1,4 @@
-"""MessagingChannel port — WhatsApp today, other channels later (research R16).
+"""MessagingChannel port — WhatsApp and Telegram (research R16, R17).
 
 No templates and no business-initiated messages (FR-022): every send is a reply.
 """
@@ -16,14 +16,15 @@ class InboundMessage(BaseModel):
     """A tutee message (or Business-app echo) in channel-neutral form."""
 
     id: str  # channel message ID (dedupe key)
-    contact: str  # E.164 number or channel user ID
-    type: Literal["text", "interactive", "unsupported"]
+    contact: str  # channel address: E.164 number (WhatsApp) or "tg:<chat id>" (Telegram)
+    type: Literal["text", "interactive", "contact", "unsupported"]
     text: str | None = None
     choice_id: str | None = None  # id of a tapped button / list row
     profile_name: str | None = None
     referral_source: str | None = None  # click-to-WhatsApp campaign id
     timestamp: datetime
     is_echo: bool = False  # sent by a human from the Business app (coexistence)
+    shared_phone: str | None = None  # a phone number shared with the app's contact button
 
 
 class Choice(BaseModel):
@@ -45,6 +46,9 @@ class OutboundMessage(BaseModel):
     choices: list[Choice] = Field(default_factory=list)
     list_button: str | None = None
     list_section: str | None = None
+    # FR-032: label of the one-tap "share my phone number" control; channels that have one
+    # show it (Telegram), others ignore it
+    phone_request_label: str | None = None
 
 
 class SentMessage(BaseModel):
@@ -60,6 +64,8 @@ class Capabilities(BaseModel):
     max_list_rows: int
     has_service_window: bool
     window_hours: float
+    contact_is_phone: bool = False  # the channel address is the tutee's phone number
+    can_request_phone: bool = False  # the channel has a "share my phone number" control
 
 
 class ChannelError(Exception):

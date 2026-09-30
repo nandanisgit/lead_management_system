@@ -18,7 +18,7 @@ One WhatsApp user.
 | Field | Type | Rules |
 |---|---|---|
 | `id` | integer PK | |
-| `wa_number` | text, unique | E.164, `+91…` |
+| `wa_number` | text, unique | channel address: E.164 `+91…` on WhatsApp, `tg:<chat id>` on Telegram (FR-031) |
 | `wa_profile_name` | text, nullable | from webhook |
 | `contact_name` | text, nullable | as the tutee gives it |
 | `relationship` | enum, nullable | `parent` / `student` / `other` |
@@ -103,6 +103,7 @@ Stored in `Conversation.collected` as `{"values": {...}, "out_of_area": bool}`.
 | Field | Required | Validation |
 |---|---|---|
 | `contact_name` | yes | 1–60 chars |
+| `phone` | yes | phone number, normalised to `+<country><number>` (default country 91); pre-filled from WhatsApp, asked on Telegram (FR-032) |
 | `relationship` | yes | `parent` / `student` / `other` |
 | `student_name` | yes | 1–60 chars; defaults to `contact_name` when `relationship = student` |
 | `grade_level` | yes | one of `lists.grade_levels` (e.g. `Class 1`…`Class 12`, `Undergraduate`, `Postgraduate`, `Adult`) |

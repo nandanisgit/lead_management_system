@@ -35,6 +35,9 @@ _NUMBERED = re.compile(
     r"(?:class|std\.?|standard|grade)?\s*(\d{1,2}|[ivx]+)\s*(?:st|nd|rd|th)?", re.I
 )
 _LIST_SEPARATORS = re.compile(r",|\band\b|&|/")
+# ITU-T E.164: a full international number has at most 15 digits; 8 is the practical minimum.
+E164_MIN_DIGITS = 8
+E164_MAX_DIGITS = 15
 
 
 class InvalidValue(ValueError):
@@ -157,6 +160,35 @@ def _pincode(spec: FieldSpec, raw: Any) -> str:
     return pin
 
 
+def _phone(spec: FieldSpec, raw: Any) -> str:
+    """A phone number in international form, ``+<country code><number>``.
+
+    Accepts spaces, dashes, brackets and dots; a leading ``+`` or ``00`` means the country
+    code is included; a bare national number (optionally with a trunk ``0``) gets the
+    configured default country code. International numbers are checked for E.164 length.
+    """
+    text = str(raw).strip()
+    if not re.fullmatch(r"[+\d\s().\-]+", text):
+        raise InvalidValue("not a phone number")
+    digits = re.sub(r"\D", "", text)
+    cc, national = spec.country_code, spec.national_digits
+    if text.startswith("+") or digits.startswith("00"):
+        full = digits[2:] if digits.startswith("00") and not text.startswith("+") else digits
+    elif len(digits) == national:
+        full = cc + digits
+    elif len(digits) == national + 1 and digits.startswith("0"):
+        full = cc + digits[1:]
+    elif len(digits) == len(cc) + national and digits.startswith(cc):
+        full = digits
+    else:
+        raise InvalidValue(f"must be a {national}-digit number")
+    if full.startswith(cc) and len(full) != len(cc) + national:
+        raise InvalidValue(f"must be a {national}-digit number")
+    if not E164_MIN_DIGITS <= len(full) <= E164_MAX_DIGITS:
+        raise InvalidValue("not a phone number")
+    return "+" + full
+
+
 def normalise(spec: FieldSpec, raw: Any, schema: RequirementSchema, today: date) -> Any:
     """Validate and normalise ``raw`` for ``spec``; raise InvalidValue with a reason."""
     kind = spec.type
@@ -178,6 +210,8 @@ def normalise(spec: FieldSpec, raw: Any, schema: RequirementSchema, today: date)
         return _email(spec, raw)
     if kind == "postal_code":
         return _pincode(spec, raw)
+    if kind == "phone_number":
+        return _phone(spec, raw)
     raise InvalidValue(f"unsupported field type {kind}")
 
 

@@ -22,7 +22,7 @@ Columns AA–AC are never written by the bot.
 |---|---|---|
 | A | Lead ID | `L-YYYYMMDD-XXXX` |
 | B | Created At | `YYYY-MM-DD HH:MM` IST |
-| C | WhatsApp Number | `+91XXXXXXXXXX` (text, prefixed with `'` so Sheets keeps the `+`) |
+| C | Phone Number | `+91XXXXXXXXXX` (text, prefixed with `'` so Sheets keeps the `+`); from WhatsApp, or shared/typed on Telegram (FR-032) |
 | D | Contact Name | |
 | E | Relationship | `parent` / `student` / `other` |
 | F | Student Name | |
@@ -62,7 +62,7 @@ Columns AA–AC are never written by the bot.
 |---|---|---|
 | A | Handoff ID | bot (`H-YYYYMMDD-XXXX`) |
 | B | Time | bot (IST) |
-| C | WhatsApp Number | bot |
+| C | Contact | bot (channel address: `+91…` on WhatsApp, `tg:<chat id>` on Telegram) |
 | D | Name | bot |
 | E | Reason | bot (`requested` / `not understood` / `complaint` / `sensitive`) |
 | F | Captured So Far | bot (short summary of validated fields) |

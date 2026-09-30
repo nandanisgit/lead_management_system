@@ -1,6 +1,6 @@
 """lead-capture CLI (Typer).
 
-Why: everything outside WhatsApp — local chats, evals, load tests, cost reports, sheet setup,
+Why: everything outside the chat apps — local chats, evals, load tests, cost reports, sheet setup,
 replaying webhooks and running jobs by hand — is one command away, for people, CI and coding
 agents alike (see CLAUDE.md → Commands).
 """
@@ -15,7 +15,7 @@ from pathlib import Path
 
 import typer
 
-app = typer.Typer(help="lead-capture: WhatsApp tutor-lead capture", no_args_is_help=True)
+app = typer.Typer(help="lead-capture: WhatsApp/Telegram tutor-lead capture", no_args_is_help=True)
 jobs_app = typer.Typer(help="Run a scheduled job by hand")
 app.add_typer(jobs_app, name="jobs")
 
@@ -160,6 +160,37 @@ def check_sheet() -> None:
         typer.secho(f"sheet check failed: {exc}", fg="red")
         raise typer.Exit(code=1) from None
     typer.secho("sheet ok: tabs and headers match the contract", fg="green")
+
+
+@app.command("set-webhook")
+def set_webhook(
+    public_url: str = typer.Argument(
+        ..., help="Public HTTPS address of this service, e.g. the cloudflared URL"
+    ),
+) -> None:
+    """Register this service's webhook with the chat app (Telegram).
+
+    WhatsApp's webhook is set in Meta's dashboard instead; for it this prints the URL to use.
+    """
+    from lead_capture import registry
+    from lead_capture.ports.channel import ChannelError, SignatureError
+    from lead_capture.settings import Secrets, get_settings
+
+    channel = registry.build_channel(get_settings(), Secrets())
+    webhook = f"{public_url.rstrip('/')}/webhooks/{channel.path_name}"
+    register = getattr(channel, "register_webhook", None)
+    if register is None:
+        typer.echo(f"{channel.name}: set this webhook URL in the provider's dashboard: {webhook}")
+        raise typer.Exit(code=1)
+    if not public_url.startswith("https://"):
+        typer.secho("the public URL must start with https://", fg="red")
+        raise typer.Exit(code=1)
+    try:
+        asyncio.run(register(public_url))
+    except (ChannelError, SignatureError) as exc:
+        typer.secho(f"webhook registration failed: {exc}", fg="red")
+        raise typer.Exit(code=1) from None
+    typer.secho(f"webhook set: {webhook}", fg="green")
 
 
 @app.command("sync-lists")

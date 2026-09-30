@@ -31,7 +31,11 @@ class FakeChannel:
     ) -> None:
         """Default capabilities match WhatsApp (3 buttons, 10 list rows, 24-hour window)."""
         self.capabilities = capabilities or Capabilities(
-            max_buttons=3, max_list_rows=10, has_service_window=True, window_hours=24
+            max_buttons=3,
+            max_list_rows=10,
+            has_service_window=True,
+            window_hours=24,
+            contact_is_phone=True,
         )
         self._verify_token = verify_token
         self.sent: list[tuple[str, OutboundMessage]] = []
@@ -67,6 +71,7 @@ class FakeChannel:
                     referral_source=m.get("referral_source"),
                     timestamp=m.get("timestamp") or datetime.now(UTC),
                     is_echo=m.get("is_echo", False),
+                    shared_phone=m.get("shared_phone"),
                 )
             )
         return out

@@ -95,13 +95,21 @@ class ConversationSettings(BaseModel):
     off_topic_max_sentences: PositiveInt
 
 
+class TelegramSettings(BaseModel):
+    """Telegram Bot API address and keyboard layout (research R17)."""
+
+    api_base_url: str
+    buttons_per_row: PositiveInt
+
+
 class ChannelSettings(BaseModel):
     """Messaging adapter choice, send timeout and retries."""
 
-    provider: Literal["whatsapp_cloud", "fake"]
+    provider: Literal["whatsapp_cloud", "telegram", "fake"]
     send_timeout_seconds: PositiveFloat
     max_retries: int = Field(ge=0)
     retry_backoff_seconds: float = Field(ge=0)
+    telegram: TelegramSettings
 
 
 class LeadsSettings(BaseModel):
@@ -277,6 +285,8 @@ class Secrets(BaseSettings):
     wa_app_secret: str | None = None
     wa_verify_token: str | None = None
     wa_api_version: str = "v23.0"
+    telegram_bot_token: str | None = None
+    telegram_webhook_secret: str | None = None
     lead_sheet_id: str | None = None
     google_service_account_file: str | None = None
     load_test_sheet_id: str | None = None

@@ -17,6 +17,7 @@ def full(schema, **over) -> Requirement:
     base = dict(
         contact_name="Priya",
         relationship="parent",
+        phone="9876543210",
         student_name="Aarav",
         grade_level="Class 8",
         board="CBSE",
@@ -42,9 +43,10 @@ def test_complete_requirement_has_nothing_missing(schema):
 
 
 def test_missing_follows_ask_group_order(schema):
-    assert Requirement().missing_required(schema)[:4] == [
+    assert Requirement().missing_required(schema)[:5] == [
         "contact_name",
         "relationship",
+        "phone",
         "student_name",
         "grade_level",
     ]

@@ -20,11 +20,20 @@ def ask(schema, r, **kw):
 def test_order_and_grouping(schema):
     assert ask(schema, req(schema)).params["fields"] == ["contact_name", "relationship"]
     r = req(schema, contact_name="Priya", relationship="parent", student_name="Aarav")
+    assert next_fields(r.missing_required(schema), schema, 2) == ["phone"]
+    r = req(
+        schema,
+        contact_name="Priya",
+        relationship="parent",
+        phone="9876543210",
+        student_name="Aarav",
+    )
     assert next_fields(r.missing_required(schema), schema, 2) == ["grade_level", "board"]
     r = req(
         schema,
         contact_name="Priya",
         relationship="parent",
+        phone="9876543210",
         student_name="Aarav",
         grade_level="Class 8",
         board="CBSE",
@@ -42,6 +51,7 @@ def test_complete_requirement_summarises(schema):
         schema,
         contact_name="Priya",
         relationship="parent",
+        phone="9876543210",
         student_name="Aarav",
         grade_level="Class 8",
         board="CBSE",
@@ -60,6 +70,7 @@ def test_guardian_only_for_minors_and_strict_flag(schema):
         schema,
         contact_name="Aarav",
         relationship="student",
+        phone="9876543210",
         grade_level="Class 9",
         board="CBSE",
         subjects=["Maths"],

@@ -60,7 +60,7 @@ async def test_full_conversation_records_one_new_lead(session_factory):
         "Budget Min (₹)": 600,
         "Budget Max (₹)": 600,
         "Budget Unit": "per hour",
-        "WhatsApp Number": "'+919999900001",
+        "Phone Number": "'+919999900001",
         "Language": "English",
     }
     assert {k: h.cell(row, k) for k in expected} == expected

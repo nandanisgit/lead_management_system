@@ -29,12 +29,13 @@ FieldType = Literal[
     "date_or_asap",
     "email_address",
     "postal_code",
+    "phone_number",
 ]
 FLAGS = {"minor_alone"}  # conversation flags usable in conditions
 LEAD_META = {
     "lead_id",
     "created_at",
-    "whatsapp_number",
+    "contact",
     "language",
     "source",
     "consent_at",
@@ -44,7 +45,7 @@ LEAD_META = {
 HANDOFF_META = {
     "handoff_id",
     "time",
-    "whatsapp_number",
+    "contact",
     "name",
     "reason",
     "captured_so_far",
@@ -129,6 +130,12 @@ class FieldSpec(_Strict):
     copy_from: CopyFrom | None = None
     default: DefaultValue | None = None
     clear_when: dict | None = None
+    # phone_number: the default country code and national number length ("91", 10)
+    country_code: str | None = None
+    national_digits: int | None = None
+    # FR-032: pre-filled from the channel when its address is a phone number (WhatsApp),
+    # otherwise asked with the channel's "share phone number" control where it has one
+    channel_phone: bool = False
 
     @model_validator(mode="after")
     def _type_params(self) -> FieldSpec:
@@ -141,6 +148,7 @@ class FieldSpec(_Strict):
             "int_range": ("min", "max"),
             "date_or_asap": ("asap_value", "asap_words", "max_days_ahead"),
             "postal_code": ("digits",),
+            "phone_number": ("country_code", "national_digits"),
         }
         for param in needs.get(self.type, ()):
             if getattr(self, param) in (None, []):
@@ -432,6 +440,10 @@ class RequirementSchema(_Strict):
             for f in order
             if values.get(f) in (None, "", []) and self.is_required(f, values, flags)
         ]
+
+    def channel_phone_fields(self) -> list[str]:
+        """Fields filled from, or requested through, the channel's phone number (FR-032)."""
+        return [n for n, f in self.fields.items() if f.channel_phone]
 
     def pii_fields(self) -> set[str]:
         """Field names whose values must never appear in logs."""

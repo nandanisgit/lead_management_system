@@ -68,6 +68,9 @@ texts:
   LIST_SECTION:
     en: "Options"
     hi: "Vikalp"
+  SHARE_PHONE_BUTTON:                  # label of the one-tap "share my number" button (FR-032)
+    en: "📱 Share my phone number"
+    hi: "📱 Apna phone number share karein"
   ASK_FOR_TEXT:
     en: "Sorry, I can only read text messages. Could you type your answer?"
     hi: "Maaf kijiye, main sirf text message padh sakti hoon. Kya aap type karke bata sakte hain?"

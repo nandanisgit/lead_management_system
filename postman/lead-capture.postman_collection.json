@@ -1,0 +1,547 @@
+{
+  "info": {
+    "name": "Lead capture — WhatsApp webhook",
+    "description": "Simulates Meta's WhatsApp Cloud API webhooks against the local service. Set appSecret = WA_APP_SECRET and verifyToken = WA_VERIFY_TOKEN from your .env. Send the 'Happy path' requests in order, a few seconds apart.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "event": [
+    {
+      "listen": "prerequest",
+      "script": {
+        "type": "text/javascript",
+        "exec": [
+          "// Runs before every request: fresh message ID + timestamp, and Meta's signature.",
+          "const n = Number(pm.collectionVariables.get(\"counter\") || 0) + 1;",
+          "pm.collectionVariables.set(\"counter\", n);",
+          "pm.variables.set(\"msgId\", \"wamid.POSTMAN.\" + Date.now() + \".\" + n);",
+          "pm.variables.set(\"ts\", Math.floor(Date.now() / 1000).toString());",
+          "",
+          "if (pm.request.method === \"POST\" && pm.request.body && pm.request.body.raw) {",
+          "  // Sign exactly the bytes Postman will send (variables already filled in).",
+          "  const body = pm.variables.replaceIn(pm.request.body.raw);",
+          "  const secret = pm.collectionVariables.get(\"appSecret\");",
+          "  let sig = CryptoJS.HmacSHA256(body, secret).toString(CryptoJS.enc.Hex);",
+          "  if (pm.info.requestName.toLowerCase().includes(\"bad signature\")) {",
+          "    sig = \"0\".repeat(64);",
+          "  }",
+          "  pm.request.headers.upsert({ key: \"X-Hub-Signature-256\", value: \"sha256=\" + sig });",
+          "}"
+        ]
+      }
+    },
+    {
+      "listen": "test",
+      "script": {
+        "type": "text/javascript",
+        "exec": [
+          "pm.test(\"status is as expected\", function () {",
+          "  const bad = pm.info.requestName.toLowerCase().includes(\"bad signature\");",
+          "  pm.expect(pm.response.code).to.eql(bad ? 401 : 200);",
+          "});"
+        ]
+      }
+    }
+  ],
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:8000"
+    },
+    {
+      "key": "appSecret",
+      "value": "same-as-WA_APP_SECRET-in-.env"
+    },
+    {
+      "key": "verifyToken",
+      "value": "same-as-WA_VERIFY_TOKEN-in-.env"
+    },
+    {
+      "key": "tuteeNumber",
+      "value": "919999900001"
+    },
+    {
+      "key": "profileName",
+      "value": "Priya"
+    },
+    {
+      "key": "phoneNumberId",
+      "value": "PHONE_NUMBER_ID"
+    },
+    {
+      "key": "counter",
+      "value": "0"
+    }
+  ],
+  "item": [
+    {
+      "name": "0 Setup checks",
+      "item": [
+        {
+          "name": "Health check",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/healthz",
+            "description": "Expect {\"status\": \"ok\", \"db\": \"ok\", \"outbox_pending\": 0}."
+          }
+        },
+        {
+          "name": "Webhook verification (Meta handshake)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/webhooks/whatsapp?hub.mode=subscribe&hub.verify_token={{verifyToken}}&hub.challenge=1158201444",
+            "description": "What Meta calls when you click 'Verify and save'. Expect the body 1158201444. A wrong token gives 403."
+          }
+        }
+      ]
+    },
+    {
+      "name": "1 Happy path (send in order)",
+      "item": [
+        {
+          "name": "01 Tutee says hi",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"object\": \"whatsapp_business_account\",\n  \"entry\": [\n    {\n      \"id\": \"WABA_ID\",\n      \"changes\": [\n        {\n          \"field\": \"messages\",\n          \"value\": {\n            \"messaging_product\": \"whatsapp\",\n            \"metadata\": {\n              \"display_phone_number\": \"911100000000\",\n              \"phone_number_id\": \"{{phoneNumberId}}\"\n            },\n            \"contacts\": [\n              {\n                \"profile\": {\n                  \"name\": \"{{profileName}}\"\n                },\n                \"wa_id\": \"{{tuteeNumber}}\"\n              }\n            ],\n            \"messages\": [\n              {\n                \"from\": \"{{tuteeNumber}}\",\n                \"id\": \"{{msgId}}\",\n                \"timestamp\": \"{{ts}}\",\n                \"type\": \"text\",\n                \"text\": {\n                  \"body\": \"Hi, need a maths tutor for my son\"\n                }\n              }\n            ]\n          }\n        }\n      ]\n    }\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": "{{baseUrl}}/webhooks/whatsapp",
+            "description": "First message from the tutee. Expect: greeting + consent question with buttons."
+          }
+        },
+        {
+          "name": "02 Consent: Yes (button)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"object\": \"whatsapp_business_account\",\n  \"entry\": [\n    {\n      \"id\": \"WABA_ID\",\n      \"changes\": [\n        {\n          \"field\": \"messages\",\n          \"value\": {\n            \"messaging_product\": \"whatsapp\",\n            \"metadata\": {\n              \"display_phone_number\": \"911100000000\",\n              \"phone_number_id\": \"{{phoneNumberId}}\"\n            },\n            \"contacts\": [\n              {\n                \"profile\": {\n                  \"name\": \"{{profileName}}\"\n                },\n                \"wa_id\": \"{{tuteeNumber}}\"\n              }\n            ],\n            \"messages\": [\n              {\n                \"from\": \"{{tuteeNumber}}\",\n                \"id\": \"{{msgId}}\",\n                \"timestamp\": \"{{ts}}\",\n                \"type\": \"interactive\",\n                \"interactive\": {\n                  \"type\": \"button_reply\",\n                  \"button_reply\": {\n                    \"id\": \"consent:yes\",\n                    \"title\": \"Yes, go ahead\"\n                  }\n                }\n              }\n            ]\n          }\n        }\n      ]\n    }\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": "{{baseUrl}}/webhooks/whatsapp",
+            "description": "Tutee taps the consent button."
+          }
+        },
+        {
+          "name": "03 Several details in one message",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"object\": \"whatsapp_business_account\",\n  \"entry\": [\n    {\n      \"id\": \"WABA_ID\",\n      \"changes\": [\n        {\n          \"field\": \"messages\",\n          \"value\": {\n            \"messaging_product\": \"whatsapp\",\n            \"metadata\": {\n              \"display_phone_number\": \"911100000000\",\n              \"phone_number_id\": \"{{phoneNumberId}}\"\n            },\n            \"contacts\": [\n              {\n                \"profile\": {\n                  \"name\": \"{{profileName}}\"\n                },\n                \"wa_id\": \"{{tuteeNumber}}\"\n              }\n            ],\n            \"messages\": [\n              {\n                \"from\": \"{{tuteeNumber}}\",\n                \"id\": \"{{msgId}}\",\n                \"timestamp\": \"{{ts}}\",\n                \"type\": \"text\",\n                \"text\": {\n                  \"body\": \"I'm Priya, his mother. He is Aarav, Class 9 CBSE, needs maths and science\"\n                }\n              }\n            ]\n          }\n        }\n      ]\n    }\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": "{{baseUrl}}/webhooks/whatsapp",
+            "description": "Multi-field extraction (G3): name, relationship, student, class, board, subjects."
+          }
+        },
+        {
+          "name": "04 Mode: Home (button)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"object\": \"whatsapp_business_account\",\n  \"entry\": [\n    {\n      \"id\": \"WABA_ID\",\n      \"changes\": [\n        {\n          \"field\": \"messages\",\n          \"value\": {\n            \"messaging_product\": \"whatsapp\",\n            \"metadata\": {\n              \"display_phone_number\": \"911100000000\",\n              \"phone_number_id\": \"{{phoneNumberId}}\"\n            },\n            \"contacts\": [\n              {\n                \"profile\": {\n                  \"name\": \"{{profileName}}\"\n                },\n                \"wa_id\": \"{{tuteeNumber}}\"\n              }\n            ],\n            \"messages\": [\n              {\n                \"from\": \"{{tuteeNumber}}\",\n                \"id\": \"{{msgId}}\",\n                \"timestamp\": \"{{ts}}\",\n                \"type\": \"interactive\",\n                \"interactive\": {\n                  \"type\": \"button_reply\",\n                  \"button_reply\": {\n                    \"id\": \"mode:home\",\n                    \"title\": \"Home\"\n                  }\n                }\n              }\n            ]\n          }\n        }\n      ]\n    }\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": "{{baseUrl}}/webhooks/whatsapp",
+            "description": "Tutee taps the Home tuition button."
+          }
+        },
+        {
+          "name": "05 Area and city",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"object\": \"whatsapp_business_account\",\n  \"entry\": [\n    {\n      \"id\": \"WABA_ID\",\n      \"changes\": [\n        {\n          \"field\": \"messages\",\n          \"value\": {\n            \"messaging_product\": \"whatsapp\",\n            \"metadata\": {\n              \"display_phone_number\": \"911100000000\",\n              \"phone_number_id\": \"{{phoneNumberId}}\"\n            },\n            \"contacts\": [\n              {\n                \"profile\": {\n                  \"name\": \"{{profileName}}\"\n                },\n                \"wa_id\": \"{{tuteeNumber}}\"\n              }\n            ],\n            \"messages\": [\n              {\n                \"from\": \"{{tuteeNumber}}\",\n                \"id\": \"{{msgId}}\",\n                \"timestamp\": \"{{ts}}\",\n                \"type\": \"text\",\n                \"text\": {\n                  \"body\": \"Sector 7, Dwarka, New Delhi\"\n                }\n              }\n            ]\n          }\n        }\n      ]\n    }\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": "{{baseUrl}}/webhooks/whatsapp",
+            "description": "Area + city (Delhi/NCR is serviceable)."
+          }
+        },
+        {
+          "name": "06 Schedule, start, budget",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"object\": \"whatsapp_business_account\",\n  \"entry\": [\n    {\n      \"id\": \"WABA_ID\",\n      \"changes\": [\n        {\n          \"field\": \"messages\",\n          \"value\": {\n            \"messaging_product\": \"whatsapp\",\n            \"metadata\": {\n              \"display_phone_number\": \"911100000000\",\n              \"phone_number_id\": \"{{phoneNumberId}}\"\n            },\n            \"contacts\": [\n              {\n                \"profile\": {\n                  \"name\": \"{{profileName}}\"\n                },\n                \"wa_id\": \"{{tuteeNumber}}\"\n              }\n            ],\n            \"messages\": [\n              {\n                \"from\": \"{{tuteeNumber}}\",\n                \"id\": \"{{msgId}}\",\n                \"timestamp\": \"{{ts}}\",\n                \"type\": \"text\",\n                \"text\": {\n                  \"body\": \"Weekday evenings 6 to 8 pm, start ASAP, budget 600 per hour\"\n                }\n              }\n            ]\n          }\n        }\n      ]\n    }\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": "{{baseUrl}}/webhooks/whatsapp",
+            "description": "Schedule, start date and budget in one message."
+          }
+        },
+        {
+          "name": "07 Confirm summary (button)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"object\": \"whatsapp_business_account\",\n  \"entry\": [\n    {\n      \"id\": \"WABA_ID\",\n      \"changes\": [\n        {\n          \"field\": \"messages\",\n          \"value\": {\n            \"messaging_product\": \"whatsapp\",\n            \"metadata\": {\n              \"display_phone_number\": \"911100000000\",\n              \"phone_number_id\": \"{{phoneNumberId}}\"\n            },\n            \"contacts\": [\n              {\n                \"profile\": {\n                  \"name\": \"{{profileName}}\"\n                },\n                \"wa_id\": \"{{tuteeNumber}}\"\n              }\n            ],\n            \"messages\": [\n              {\n                \"from\": \"{{tuteeNumber}}\",\n                \"id\": \"{{msgId}}\",\n                \"timestamp\": \"{{ts}}\",\n                \"type\": \"interactive\",\n                \"interactive\": {\n                  \"type\": \"button_reply\",\n                  \"button_reply\": {\n                    \"id\": \"confirm:yes\",\n                    \"title\": \"Confirm\"\n                  }\n                }\n              }\n            ]\n          }\n        }\n      ]\n    }\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": "{{baseUrl}}/webhooks/whatsapp",
+            "description": "Confirms the summary. Expect: closing message, one NEW row in the sheet (or in-memory repo)."
+          }
+        }
+      ]
+    },
+    {
+      "name": "2 Other scenarios",
+      "item": [
+        {
+          "name": "Board: CBSE (list reply)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"object\": \"whatsapp_business_account\",\n  \"entry\": [\n    {\n      \"id\": \"WABA_ID\",\n      \"changes\": [\n        {\n          \"field\": \"messages\",\n          \"value\": {\n            \"messaging_product\": \"whatsapp\",\n            \"metadata\": {\n              \"display_phone_number\": \"911100000000\",\n              \"phone_number_id\": \"{{phoneNumberId}}\"\n            },\n            \"contacts\": [\n              {\n                \"profile\": {\n                  \"name\": \"{{profileName}}\"\n                },\n                \"wa_id\": \"{{tuteeNumber}}\"\n              }\n            ],\n            \"messages\": [\n              {\n                \"from\": \"{{tuteeNumber}}\",\n                \"id\": \"{{msgId}}\",\n                \"timestamp\": \"{{ts}}\",\n                \"type\": \"interactive\",\n                \"interactive\": {\n                  \"type\": \"list_reply\",\n                  \"list_reply\": {\n                    \"id\": \"board:CBSE\",\n                    \"title\": \"CBSE\"\n                  }\n                }\n              }\n            ]\n          }\n        }\n      ]\n    }\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": "{{baseUrl}}/webhooks/whatsapp",
+            "description": "A tap on a list row (used when there are more than 3 choices)."
+          }
+        },
+        {
+          "name": "Change summary (button)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"object\": \"whatsapp_business_account\",\n  \"entry\": [\n    {\n      \"id\": \"WABA_ID\",\n      \"changes\": [\n        {\n          \"field\": \"messages\",\n          \"value\": {\n            \"messaging_product\": \"whatsapp\",\n            \"metadata\": {\n              \"display_phone_number\": \"911100000000\",\n              \"phone_number_id\": \"{{phoneNumberId}}\"\n            },\n            \"contacts\": [\n              {\n                \"profile\": {\n                  \"name\": \"{{profileName}}\"\n                },\n                \"wa_id\": \"{{tuteeNumber}}\"\n              }\n            ],\n            \"messages\": [\n              {\n                \"from\": \"{{tuteeNumber}}\",\n                \"id\": \"{{msgId}}\",\n                \"timestamp\": \"{{ts}}\",\n                \"type\": \"interactive\",\n                \"interactive\": {\n                  \"type\": \"button_reply\",\n                  \"button_reply\": {\n                    \"id\": \"confirm:change\",\n                    \"title\": \"Change\"\n                  }\n                }\n              }\n            ]\n          }\n        }\n      ]\n    }\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": "{{baseUrl}}/webhooks/whatsapp",
+            "description": "Tutee wants to correct something."
+          }
+        },
+        {
+          "name": "Consent: No (button)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"object\": \"whatsapp_business_account\",\n  \"entry\": [\n    {\n      \"id\": \"WABA_ID\",\n      \"changes\": [\n        {\n          \"field\": \"messages\",\n          \"value\": {\n            \"messaging_product\": \"whatsapp\",\n            \"metadata\": {\n              \"display_phone_number\": \"911100000000\",\n              \"phone_number_id\": \"{{phoneNumberId}}\"\n            },\n            \"contacts\": [\n              {\n                \"profile\": {\n                  \"name\": \"{{profileName}}\"\n                },\n                \"wa_id\": \"{{tuteeNumber}}\"\n              }\n            ],\n            \"messages\": [\n              {\n                \"from\": \"{{tuteeNumber}}\",\n                \"id\": \"{{msgId}}\",\n                \"timestamp\": \"{{ts}}\",\n                \"type\": \"interactive\",\n                \"interactive\": {\n                  \"type\": \"button_reply\",\n                  \"button_reply\": {\n                    \"id\": \"consent:no\",\n                    \"title\": \"No\"\n                  }\n                }\n              }\n            ]\n          }\n        }\n      ]\n    }\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": "{{baseUrl}}/webhooks/whatsapp",
+            "description": "Tutee declines consent. Expect: nothing stored, conversation closed."
+          }
+        },
+        {
+          "name": "Hinglish message",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"object\": \"whatsapp_business_account\",\n  \"entry\": [\n    {\n      \"id\": \"WABA_ID\",\n      \"changes\": [\n        {\n          \"field\": \"messages\",\n          \"value\": {\n            \"messaging_product\": \"whatsapp\",\n            \"metadata\": {\n              \"display_phone_number\": \"911100000000\",\n              \"phone_number_id\": \"{{phoneNumberId}}\"\n            },\n            \"contacts\": [\n              {\n                \"profile\": {\n                  \"name\": \"{{profileName}}\"\n                },\n                \"wa_id\": \"{{tuteeNumber}}\"\n              }\n            ],\n            \"messages\": [\n              {\n                \"from\": \"{{tuteeNumber}}\",\n                \"id\": \"{{msgId}}\",\n                \"timestamp\": \"{{ts}}\",\n                \"type\": \"text\",\n                \"text\": {\n                  \"body\": \"Mujhe beti ke liye online maths tutor chahiye, class 7\"\n                }\n              }\n            ]\n          }\n        }\n      ]\n    }\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": "{{baseUrl}}/webhooks/whatsapp",
+            "description": "Reply should be in Hindi/Hinglish."
+          }
+        },
+        {
+          "name": "Budget: not sure",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"object\": \"whatsapp_business_account\",\n  \"entry\": [\n    {\n      \"id\": \"WABA_ID\",\n      \"changes\": [\n        {\n          \"field\": \"messages\",\n          \"value\": {\n            \"messaging_product\": \"whatsapp\",\n            \"metadata\": {\n              \"display_phone_number\": \"911100000000\",\n              \"phone_number_id\": \"{{phoneNumberId}}\"\n            },\n            \"contacts\": [\n              {\n                \"profile\": {\n                  \"name\": \"{{profileName}}\"\n                },\n                \"wa_id\": \"{{tuteeNumber}}\"\n              }\n            ],\n            \"messages\": [\n              {\n                \"from\": \"{{tuteeNumber}}\",\n                \"id\": \"{{msgId}}\",\n                \"timestamp\": \"{{ts}}\",\n                \"type\": \"text\",\n                \"text\": {\n                  \"body\": \"pata nahi, aap batao kitna hota hai\"\n                }\n              }\n            ]\n          }\n        }\n      ]\n    }\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": "{{baseUrl}}/webhooks/whatsapp",
+            "description": "Bot must ask for an approximate figure and never suggest one (FR-006)."
+          }
+        },
+        {
+          "name": "Off-topic / asks fees",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"object\": \"whatsapp_business_account\",\n  \"entry\": [\n    {\n      \"id\": \"WABA_ID\",\n      \"changes\": [\n        {\n          \"field\": \"messages\",\n          \"value\": {\n            \"messaging_product\": \"whatsapp\",\n            \"metadata\": {\n              \"display_phone_number\": \"911100000000\",\n              \"phone_number_id\": \"{{phoneNumberId}}\"\n            },\n            \"contacts\": [\n              {\n                \"profile\": {\n                  \"name\": \"{{profileName}}\"\n                },\n                \"wa_id\": \"{{tuteeNumber}}\"\n              }\n            ],\n            \"messages\": [\n              {\n                \"from\": \"{{tuteeNumber}}\",\n                \"id\": \"{{msgId}}\",\n                \"timestamp\": \"{{ts}}\",\n                \"type\": \"text\",\n                \"text\": {\n                  \"body\": \"What are your fees? Is Rahul sir available?\"\n                }\n              }\n            ]\n          }\n        }\n      ]\n    }\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": "{{baseUrl}}/webhooks/whatsapp",
+            "description": "Short fixed answer, then steers back (FR-007)."
+          }
+        },
+        {
+          "name": "Out of area (Pune)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"object\": \"whatsapp_business_account\",\n  \"entry\": [\n    {\n      \"id\": \"WABA_ID\",\n      \"changes\": [\n        {\n          \"field\": \"messages\",\n          \"value\": {\n            \"messaging_product\": \"whatsapp\",\n            \"metadata\": {\n              \"display_phone_number\": \"911100000000\",\n              \"phone_number_id\": \"{{phoneNumberId}}\"\n            },\n            \"contacts\": [\n              {\n                \"profile\": {\n                  \"name\": \"{{profileName}}\"\n                },\n                \"wa_id\": \"{{tuteeNumber}}\"\n              }\n            ],\n            \"messages\": [\n              {\n                \"from\": \"{{tuteeNumber}}\",\n                \"id\": \"{{msgId}}\",\n                \"timestamp\": \"{{ts}}\",\n                \"type\": \"text\",\n                \"text\": {\n                  \"body\": \"Need home tuition in Pune, Kothrud\"\n                }\n              }\n            ]\n          }\n        }\n      ]\n    }\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": "{{baseUrl}}/webhooks/whatsapp",
+            "description": "Out-of-area flow: offers online instead (FR-012)."
+          }
+        },
+        {
+          "name": "Talk to a human",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"object\": \"whatsapp_business_account\",\n  \"entry\": [\n    {\n      \"id\": \"WABA_ID\",\n      \"changes\": [\n        {\n          \"field\": \"messages\",\n          \"value\": {\n            \"messaging_product\": \"whatsapp\",\n            \"metadata\": {\n              \"display_phone_number\": \"911100000000\",\n              \"phone_number_id\": \"{{phoneNumberId}}\"\n            },\n            \"contacts\": [\n              {\n                \"profile\": {\n                  \"name\": \"{{profileName}}\"\n                },\n                \"wa_id\": \"{{tuteeNumber}}\"\n              }\n            ],\n            \"messages\": [\n              {\n                \"from\": \"{{tuteeNumber}}\",\n                \"id\": \"{{msgId}}\",\n                \"timestamp\": \"{{ts}}\",\n                \"type\": \"text\",\n                \"text\": {\n                  \"body\": \"Can I talk to someone please?\"\n                }\n              }\n            ]\n          }\n        }\n      ]\n    }\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": "{{baseUrl}}/webhooks/whatsapp",
+            "description": "Handoff (US4)."
+          }
+        },
+        {
+          "name": "Voice note (unsupported)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"object\": \"whatsapp_business_account\",\n  \"entry\": [\n    {\n      \"id\": \"WABA_ID\",\n      \"changes\": [\n        {\n          \"field\": \"messages\",\n          \"value\": {\n            \"messaging_product\": \"whatsapp\",\n            \"metadata\": {\n              \"display_phone_number\": \"911100000000\",\n              \"phone_number_id\": \"{{phoneNumberId}}\"\n            },\n            \"contacts\": [\n              {\n                \"profile\": {\n                  \"name\": \"{{profileName}}\"\n                },\n                \"wa_id\": \"{{tuteeNumber}}\"\n              }\n            ],\n            \"messages\": [\n              {\n                \"from\": \"{{tuteeNumber}}\",\n                \"id\": \"{{msgId}}\",\n                \"timestamp\": \"{{ts}}\",\n                \"type\": \"audio\",\n                \"audio\": {\n                  \"id\": \"MEDIA_ID\",\n                  \"mime_type\": \"audio/ogg; codecs=opus\"\n                }\n              }\n            ]\n          }\n        }\n      ]\n    }\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": "{{baseUrl}}/webhooks/whatsapp",
+            "description": "Bot asks for a text reply."
+          }
+        },
+        {
+          "name": "Duplicate delivery (send twice)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"object\": \"whatsapp_business_account\",\n  \"entry\": [\n    {\n      \"id\": \"WABA_ID\",\n      \"changes\": [\n        {\n          \"field\": \"messages\",\n          \"value\": {\n            \"messaging_product\": \"whatsapp\",\n            \"metadata\": {\n              \"display_phone_number\": \"911100000000\",\n              \"phone_number_id\": \"{{phoneNumberId}}\"\n            },\n            \"contacts\": [\n              {\n                \"profile\": {\n                  \"name\": \"{{profileName}}\"\n                },\n                \"wa_id\": \"{{tuteeNumber}}\"\n              }\n            ],\n            \"messages\": [\n              {\n                \"from\": \"{{tuteeNumber}}\",\n                \"id\": \"wamid.POSTMAN.DUPLICATE.1\",\n                \"timestamp\": \"{{ts}}\",\n                \"type\": \"text\",\n                \"text\": {\n                  \"body\": \"Hello again\"\n                }\n              }\n            ]\n          }\n        }\n      ]\n    }\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": "{{baseUrl}}/webhooks/whatsapp",
+            "description": "Fixed message ID. Send it twice: stored once, answered once (FR-017)."
+          }
+        },
+        {
+          "name": "Status update (ignored)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"object\": \"whatsapp_business_account\",\n  \"entry\": [\n    {\n      \"id\": \"WABA_ID\",\n      \"changes\": [\n        {\n          \"field\": \"messages\",\n          \"value\": {\n            \"messaging_product\": \"whatsapp\",\n            \"metadata\": {\n              \"display_phone_number\": \"911100000000\",\n              \"phone_number_id\": \"{{phoneNumberId}}\"\n            },\n            \"statuses\": [\n              {\n                \"id\": \"wamid.OUT1\",\n                \"status\": \"delivered\",\n                \"timestamp\": \"{{ts}}\",\n                \"recipient_id\": \"{{tuteeNumber}}\"\n              }\n            ]\n          }\n        }\n      ]\n    }\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": "{{baseUrl}}/webhooks/whatsapp",
+            "description": "Delivery receipt from Meta. Expect 200 and nothing else."
+          }
+        },
+        {
+          "name": "Bad signature (expect 401)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"object\": \"whatsapp_business_account\",\n  \"entry\": [\n    {\n      \"id\": \"WABA_ID\",\n      \"changes\": [\n        {\n          \"field\": \"messages\",\n          \"value\": {\n            \"messaging_product\": \"whatsapp\",\n            \"metadata\": {\n              \"display_phone_number\": \"911100000000\",\n              \"phone_number_id\": \"{{phoneNumberId}}\"\n            },\n            \"contacts\": [\n              {\n                \"profile\": {\n                  \"name\": \"{{profileName}}\"\n                },\n                \"wa_id\": \"{{tuteeNumber}}\"\n              }\n            ],\n            \"messages\": [\n              {\n                \"from\": \"{{tuteeNumber}}\",\n                \"id\": \"{{msgId}}\",\n                \"timestamp\": \"{{ts}}\",\n                \"type\": \"text\",\n                \"text\": {\n                  \"body\": \"forged\"\n                }\n              }\n            ]\n          }\n        }\n      ]\n    }\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": "{{baseUrl}}/webhooks/whatsapp",
+            "description": "The pre-request script deliberately sends a wrong X-Hub-Signature-256 for this request. Expect 401."
+          }
+        }
+      ]
+    }
+  ]
+}

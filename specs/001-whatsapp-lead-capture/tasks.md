@@ -175,6 +175,17 @@ tested and demonstrated on its own. Every performance/cost number comes from
 - [X] T136 [US1] Let evals run on Ollama: `lead-capture eval --provider ollama` uses Ollama for the bot and the simulated tutee (`evals.ollama_tutee_model`) in `evals/runner.py`, `evals/tutee.py`, `src/lead_capture/cli.py`, with a unit test
 - [X] T137 Document the free local setup and the switch back to Claude in `specs/001-whatsapp-lead-capture/quickstart.md`, `research.md` (R2, R16) and `README.md`
 
+### Telegram as a second channel (2026-09-30): FR-031, FR-032, research R17
+
+- [X] T138 Amend `intent.md` (non-goals, §6 `phone`, §10 channels, D12), `spec.md` (FR-031, FR-032), `research.md` (R17), `data-model.md`, `contracts/lead-sheet.md`; add `contracts/telegram-webhook.md`
+- [X] T139 [US1] Add field type `phone_number` (normalise to `+<country><number>`) in `src/lead_capture/domain/field_types.py` and `schema.py`; add the `phone` field (`channel_phone: true`), its ask group, the `Leads` "Phone Number" and `Handoffs` "Contact" columns in `config/requirement.yaml`; share-button label in `config/messages.yaml`; unit tests in `tests/unit/test_field_types.py` / `test_schema.py`
+- [X] T140 [US1] Extend the channel port: `Capabilities.contact_is_phone` / `can_request_phone`, `InboundMessage.shared_phone` (+ `type=contact`), `OutboundMessage.phone_request_label`; set them in the WhatsApp and fake adapters
+- [X] T141 [US1] Engine: pre-fill channel-phone fields when the channel address is a phone number; accept a shared phone as a structured (model-free) input; add the share-phone control when asking a channel-phone field; integration test (Telegram-like fake channel) in `tests/integration/test_phone_capture.py`
+- [X] T142 [P] [US1] Contract tests for `TelegramChannel` (shared channel suite + parser, sender, secret-token and retry checks with respx) in `tests/contract/test_telegram_channel.py`
+- [X] T143 [US1] Implement `TelegramChannel` (parser, sender, channel, `register_webhook`) in `src/lead_capture/adapters/channels/telegram/`; `channel.telegram` settings, `TELEGRAM_BOT_TOKEN` / `TELEGRAM_WEBHOOK_SECRET` secrets; register provider `telegram` in `registry.py`; silence httpx request logging in `logging.py`
+- [X] T144 [US1] CLI `lead-capture set-webhook <public-url>` in `src/lead_capture/cli.py` with a unit test
+- [X] T145 Regenerate the sheet template; document Telegram setup in `quickstart.md`, `README.md` and `.env.example`
+
 **Checkpoint**: MVP — a real WhatsApp chat produces a correct `NEW` row; US1 tests and evals pass
 
 ---
