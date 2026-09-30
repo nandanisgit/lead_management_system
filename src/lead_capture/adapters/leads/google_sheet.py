@@ -50,6 +50,22 @@ def service_account_token_provider(path: str) -> Callable[[], str]:
     return token
 
 
+def header_difference(layout: SheetLayout, actual: list) -> str:
+    """The first header cell that differs, in words, so the sheet can be fixed by hand.
+
+    Headers come from config/requirement.yaml, not from tutees, so they are safe to show.
+    """
+    for i in range(max(len(actual), len(layout.headers))):
+        want = layout.headers[i] if i < len(layout.headers) else None
+        got = actual[i] if i < len(actual) else None
+        if got != want:
+            cell = f"{layout.tab}!{column_letter(i)}1"
+            if want is None:
+                return f"{cell} should be empty, found {got!r}"
+            return f"{cell} should be {want!r}, found {got!r}"
+    return f"{layout.tab} header row differs"
+
+
 class GoogleSheetLeadRepository:
     """LeadRepository on a native Google Sheet."""
 
@@ -197,8 +213,9 @@ class GoogleSheetLeadRepository:
         for layout in (self._leads, self._handoffs):
             actual = (self._get(f"{layout.tab}!1:1") or [[]])[0]
             if tuple(actual) != layout.headers:
-                log.error("sheet_header_mismatch", extra={"tab": layout.tab})
-                raise RepositoryContractError("sheet_header_mismatch")
+                detail = header_difference(layout, list(actual))
+                log.error("sheet_header_mismatch", extra={"tab": layout.tab, "detail": detail})
+                raise RepositoryContractError(f"sheet_header_mismatch: {detail}")
 
     def exists(self, lead_id: str) -> bool:
         """Lead ID present in the key column."""

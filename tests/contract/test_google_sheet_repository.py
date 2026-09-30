@@ -88,3 +88,20 @@ def test_sync_lists():
         ctx = Ctx(router)
         ctx.repo.sync_lists({"Mode": ["online", "home"], "Board": ["CBSE"]})
         assert ctx.sheets.grids["Lists"] == [["Mode", "Board"], ["online", "CBSE"], ["home", ""]]
+
+
+def test_header_difference_names_the_cell():
+    from lead_capture.adapters.leads.google_sheet import header_difference
+    from lead_capture.domain.schema import get_schema
+
+    layout = get_schema().leads_layout()
+    wrong = list(layout.headers)
+    wrong[2] = "WhatsApp Number"
+    assert header_difference(layout, wrong) == (
+        "Leads!C1 should be 'Phone Number', found 'WhatsApp Number'"
+    )
+    missing_last = list(layout.headers)[:-1]
+    assert "should be 'Last Updated', found None" in header_difference(layout, missing_last)
+    assert "should be empty, found 'Extra'" in header_difference(
+        layout, list(layout.headers) + ["Extra"]
+    )
