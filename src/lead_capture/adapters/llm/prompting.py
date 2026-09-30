@@ -75,6 +75,26 @@ def response_schema(fields_schema: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def field_guide(fields_schema: dict[str, Any]) -> str:
+    """One short line per field: name, description and allowed values.
+
+    Why: small local models are slow on long prompts. The full JSON schema is already
+    enforced by the provider's structured-output mode, so the prompt only needs the meaning
+    of each field — about half the tokens of pasting the schema.
+    """
+    lines = []
+    for name, prop in fields_schema.get("properties", {}).items():
+        line = f"- {name}: {prop.get('description', '')}".rstrip()
+        if prop.get("enum"):
+            line += f" (one of: {', '.join(map(str, prop['enum']))})"
+        if prop.get("type") == "array":
+            line += " (a list)"
+        elif prop.get("type") == "integer":
+            line += " (a whole number)"
+        lines.append(line)
+    return "\n".join(lines)
+
+
 def read_prompt(name: str) -> str:
     """Text of ``prompts/<name>`` — prompts are files so they can be tuned without code."""
     return (PROMPTS / name).read_text()

@@ -169,3 +169,14 @@ def test_concurrency_cap_comes_from_settings():
 def test_registry_builds_ollama_client():
     llm = build_llm(settings(), Secrets(_env_file=None), get_schema())
     assert isinstance(llm, OllamaLLMClient)
+
+
+def test_extraction_prompt_is_a_compact_field_guide_not_the_schema():
+    from lead_capture.domain.schema import get_schema
+
+    schema = get_schema()
+    system = client()._extract_system
+    for name in schema.field_names():
+        assert f"- {name}:" in system
+    assert "one of: online, home, either" in system
+    assert '"additionalProperties"' not in system  # the JSON schema itself is not pasted

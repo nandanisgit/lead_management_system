@@ -1,5 +1,7 @@
-Respond with only one JSON object and no other text. It must match this JSON schema; each
-field's "description" tells you the expected form of its value. Leave out fields the tutee has
-not stated.
+Respond with only one JSON object and no other text, shaped like
+{"fields": {...}, "signals": {...}}. Leave out fields the tutee has not stated.
 
-{response_schema}
+Fields you may fill (name: what it holds):
+{field_guide}
+
+Signals: {signal_names}. Always set "language" and "understood".

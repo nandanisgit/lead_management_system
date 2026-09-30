@@ -27,8 +27,8 @@ llm:
   # --- Ollama (provider: ollama): free, runs on your own machine. `ollama pull <model>` first ---
   ollama:
     base_url: http://localhost:11434  # where `ollama serve` listens
-    extraction_model: gemma3:12b      # multilingual (Hindi/Hinglish), follows JSON schemas; gemma3:4b if the machine is slow
-    reply_model: gemma3:12b
+    extraction_model: gemma3:4b       # multilingual (Hindi/Hinglish), follows JSON schemas; ~3x faster than 12b on a laptop CPU
+    reply_model: gemma3:4b            # gemma3:12b gives nicer replies on a fast (Apple silicon/GPU) machine
     timeout_seconds: 60               # local models are slower than the API, esp. the first call that loads the model
     max_concurrent_calls: 2           # a laptop serves ~1-2 requests at once; more just queue
     context_window: 8192              # Ollama's default (2-4k) would cut off the prompt + field schema

@@ -86,7 +86,8 @@ class OllamaLLMClient:
         self._known = set(fields_schema["properties"])
         self._extract_system = prompting.extraction_system(
             "extraction_output_json.md",
-            response_schema=json.dumps(self._schema, ensure_ascii=False, indent=1),
+            field_guide=prompting.field_guide(fields_schema),
+            signal_names=", ".join(prompting.SIGNAL_SCHEMA),
         )
         self._reply_system = prompting.reply_system(max_questions, max_words)
 

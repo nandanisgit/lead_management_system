@@ -53,6 +53,7 @@ class Turn:
     lang: str
     replies: list[OutboundMessage] = field(default_factory=list)
     lead_created: bool = False
+    model_failed: bool = False  # the model errored or timed out this turn
 
 
 class Engine:
@@ -283,8 +284,10 @@ class Engine:
         try:
             result = await self.sv.llm.extract(ctx)
         except LLMError:
+            # a timeout or error is not the tutee's fault: no "didn't get that", no strike
             log.warning("extract_failed", extra={"conversation_id": turn.conv.id})
-            return ExtractionResult(signals=Signals(understood=False))
+            turn.model_failed = True
+            return ExtractionResult()
         queries.record_usage(db, turn.conv.id, "extract", result.usage)
         return result
 
@@ -380,6 +383,8 @@ class Engine:
         }
         from_channel = self._channel_fields(turn, req)
         req, rejected = self._apply(conv, req, {**from_channel, **said})
+        if turn.model_failed:
+            deterministic = True  # re-ask with the fixed question; don't wait on the model again
         signals = None if deterministic else extraction.signals
         update_minor_flags(conv, req, signals, self.schema)
 
