@@ -61,7 +61,7 @@ lists:
   mode_aliases: {offline: home, home tuition: home, home tutor: home, at home: home,
                  ghar: home, ghar par: home, tutor at home: home, virtual: online,
                  video: online, video call: online, zoom: online, both: either,
-                 any: either, koi bhi: either, dono: either}
+                 koi bhi: either, dono: either}
   budget_units: [per_hour, per_month]
   budget_unit_aliases: {per hour: per_hour, hourly: per_hour, hour: per_hour,
                         an hour: per_hour, /hr: per_hour, per hr: per_hour,

@@ -197,6 +197,7 @@ tested and demonstrated on its own. Every performance/cost number comes from
 ### Review follow-up (2026-09-30): invented values (constitution II)
 
 - [X] T151 [US1] Grounding check: every model-proposed value must be traceable to the tutee's recent messages (value, label, alias or number, per field type) or it is dropped and logged by field name (`llm.require_grounding`), in `src/lead_capture/conversation/grounding.py`; mode/relationship aliases and level number words ("first standard", "pehli class") in `config/requirement.yaml`; typed consent ("yes", "haan", "no") without a model call (`consent_words` in `config/messages.yaml`); a short reply the model filed under a field that wasn't asked goes to the asked field; tests in `tests/unit/test_grounding.py` and `tests/integration/test_grounding_flow.py`
+- [X] T152 [US1] Reply prompt: mention only captured or tutee-stated details (no "your online sessions" before mode is chosen); drop the over-broad mode alias "any"; test that an assumed mode is asked with Online/Home/Either buttons in `tests/integration/test_grounding_flow.py`
 
 **Checkpoint**: MVP — a real WhatsApp chat produces a correct `NEW` row; US1 tests and evals pass
 

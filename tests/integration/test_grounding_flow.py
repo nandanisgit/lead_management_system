@@ -62,3 +62,24 @@ async def test_short_answer_goes_to_the_asked_field_not_notes(session_factory):
     values = collected(session_factory)
     assert values.get("city") == "Noida" and "level_notes" not in values
     assert h.reply_instructions[-1].params["fields"] == ["area"]
+
+
+async def test_assumed_mode_is_asked_with_buttons(session_factory):
+    h = Harness(session_factory)
+    await h.say("I am sunny, a student")
+    h.script(ext(contact_name="sunny", relationship="student"))
+    await h.say(choice="consent:yes")
+    h.script(ext(grade_level="Class 10", board="CBSE"))
+    await h.say("cbse class 10")
+    h.script(ext(subjects=["Maths"], mode="online"))  # the model assumes online
+    [reply] = await h.say("math")
+    assert "mode" not in collected(session_factory)
+    assert h.reply_instructions[-1].params["fields"] == ["mode"]
+    assert [c.id for c in reply.choices] == ["mode:online", "mode:home", "mode:either"]
+
+
+def test_any_is_not_a_mode(schema):
+    from lead_capture.conversation.grounding import grounded
+
+    kept, _ = grounded(schema, {"mode": "either"}, ["any good tutor is fine"])
+    assert kept == {}
