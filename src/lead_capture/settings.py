@@ -93,6 +93,7 @@ class ConversationSettings(BaseModel):
     max_turns_per_contact_per_hour: PositiveInt
     max_turns_per_contact_per_day: PositiveInt
     off_topic_max_sentences: PositiveInt
+    short_answer_max_words: int = Field(ge=0)
 
 
 class TelegramSettings(BaseModel):

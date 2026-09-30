@@ -47,6 +47,7 @@ conversation:
   max_turns_per_contact_per_hour: 30  # FR-030: well above a real chat (~10 turns)
   max_turns_per_contact_per_day: 100  # FR-030: caps worst-case cost per number
   off_topic_max_sentences: 1          # FR-007
+  short_answer_max_words: 3           # a reply this short is checked against the question just asked (0 = off)
 
 channel:
   provider: whatsapp_cloud            # R3; also: telegram (R17), fake

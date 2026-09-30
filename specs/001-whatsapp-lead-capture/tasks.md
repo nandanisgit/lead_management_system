@@ -186,6 +186,10 @@ tested and demonstrated on its own. Every performance/cost number comes from
 - [X] T144 [US1] CLI `lead-capture set-webhook <public-url>` in `src/lead_capture/cli.py` with a unit test
 - [X] T145 Regenerate the sheet template; document Telegram setup in `quickstart.md`, `README.md` and `.env.example`
 
+### Review follow-up (2026-09-30): one-word answers
+
+- [X] T146 [US1] Tell the extraction model which fields the last question asked for (`TurnContext.asked`, prompt rule); when the model finds nothing in a short reply (≤ `conversation.short_answer_max_words`), offer it to the asked fields — fixed-value fields only on an exact valid value, free text only when it is the single text field asked; integration tests in `tests/integration/test_short_answers.py`
+
 **Checkpoint**: MVP — a real WhatsApp chat produces a correct `NEW` row; US1 tests and evals pass
 
 ---

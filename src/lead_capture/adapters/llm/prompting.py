@@ -112,6 +112,7 @@ def extraction_content(turn: TurnContext, context_messages: int) -> str:
     return (
         f"Captured so far (validated): {json.dumps(turn.state, ensure_ascii=False)}\n"
         f"Still missing: {', '.join(turn.missing) or 'nothing'}\n"
+        f"The assistant's last question asked for: {', '.join(turn.asked) or 'nothing specific'}\n"
         f"Conversation stage: {turn.stage}\n\n"
         f"Recent messages (oldest first):\n{transcript(turn, context_messages)}"
     )

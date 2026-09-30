@@ -5,6 +5,8 @@ Rules:
 - Record only details the tutee actually stated. Never guess, never infer a budget, schedule
   or location. Omit anything not mentioned.
 - Use the tutee's latest statement if they changed something.
+- A short reply (a name, a word, a number) usually answers the assistant's last question:
+  record it in the field that question asked for.
 - Follow each field's description in the tool for the expected form of the value.
 - Messages may be in English, Hindi or Hinglish; set signals.language to "en" or "hi"
   (Hinglish counts as "hi"), or "other" for any other language.

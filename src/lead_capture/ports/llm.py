@@ -71,6 +71,7 @@ class TurnContext(BaseModel):
     transcript: list[TranscriptLine] = Field(default_factory=list)
     state: dict[str, Any] = Field(default_factory=dict)  # validated values only
     missing: list[str] = Field(default_factory=list)
+    asked: list[str] = Field(default_factory=list)  # fields the last question asked for
     language: Literal["en", "hi"] = "en"
     stage: str = "in_progress"
 

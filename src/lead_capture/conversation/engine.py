@@ -179,6 +179,53 @@ class Engine:
                 fields[name] = value
         return fields
 
+    def _asked(self, turn: Turn, req: Requirement) -> list[str]:
+        """The fields the bot's last question asked for.
+
+        The requirement hasn't changed since that question, so re-planning gives the same
+        fields.
+        """
+        missing = req.missing_required(self.schema, turn.conv.minor_alone)
+        return planner.next_fields(
+            missing, self.schema, self.cfg.conversation.max_questions_per_message
+        )
+
+    def _short_answer(self, turn: Turn, req: Requirement, signals: Signals) -> dict:
+        """A short reply the model couldn't place, read as the answer to the last question.
+
+        Small models often miss one-word answers ("Nandani", "ICSE"). If the reply is at most
+        ``conversation.short_answer_max_words`` words and not a question or a request, it is
+        offered to the fields just asked: a field with fixed values (board, class, mode…) only
+        if the reply is one of them; a free-text field only if it is the one text field asked.
+        The value is still validated by ``Requirement.apply``.
+        """
+        texts = [i.text.strip() for i in turn.items if i.type == "text" and i.text]
+        limit = self.cfg.conversation.short_answer_max_words
+        if len(texts) != 1 or not limit:
+            return {}
+        text = texts[0]
+        flagged = (
+            signals.wants_human
+            or signals.not_interested
+            or signals.off_topic
+            or signals.asks_fees_or_tutors
+            or signals.deletion_request
+            or signals.complaint_or_sensitive
+            or signals.new_student
+        )
+        if flagged or text.endswith("?") or text.startswith("/") or len(text.split()) > limit:
+            return {}
+        asked = self._asked(turn, req)
+        today = self._now().date()
+        for name in asked:  # fixed-value fields first: the reply must be one of their values
+            if self.schema.fields[name].type == "text":
+                continue
+            probe, rejected = req.apply({name: text}, self.schema, today)
+            if not rejected and probe.get(name) not in (None, "", []):
+                return {name: text}
+        free_text = [n for n in asked if self.schema.fields[n].type == "text"]
+        return {free_text[0]: text} if len(free_text) == 1 else {}
+
     def _context(self, db: Session, turn: Turn, req: Requirement) -> TurnContext:
         """Build what the model sees for this turn.
 
@@ -186,6 +233,7 @@ class Engine:
         the language — nothing unvalidated.
         """
         msgs = queries.transcript(db, turn.conv.id, self.cfg.llm.context_messages)
+        asked = self._asked(turn, req) if turn.conv.state == State.IN_PROGRESS else []
         return TurnContext(
             transcript=[
                 TranscriptLine(role="tutee" if m.direction == "in" else "assistant", text=m.body)
@@ -194,6 +242,7 @@ class Engine:
             ],
             state=req.captured(),
             missing=req.missing_required(self.schema, turn.conv.minor_alone),
+            asked=asked,
             language="hi" if turn.lang == "hi" else "en",
             stage=turn.conv.state,
         )
@@ -294,8 +343,12 @@ class Engine:
             else:
                 extraction = await self._extract(db, turn, req)
         extraction = extraction or ExtractionResult()
+        short = {}
+        if not deterministic and not after_consent and not extraction.fields:
+            short = self._short_answer(turn, req, extraction.signals)
         # what the tutee said or tapped, plus values the channel itself supplies (FR-032)
         said = {
+            **short,
             **extraction.fields,
             **self._tap_fields(self._taps(turn.items)),
             **self._shared_fields(turn.items),
