@@ -87,8 +87,8 @@ choices:
     - {id: "confirm:yes", en: "Confirm", hi: "Haan, sahi hai"}
     - {id: "confirm:change", en: "Change", hi: "Kuch badalna hai"}
 
-# Local language detection (before consent, without a model call) and the reply-language
-# guard. Words are matched as whole words, case-insensitively.
+# Local language detection (every turn, in code — the model does not choose the reply
+# language) and the reply-language guard. Words are matched as whole words, case-insensitively.
 language:
   default: en
   hindi:
@@ -102,6 +102,13 @@ language:
     min_tutee_markers: 1                  # ≥ this many → tutee writes Hindi/Hinglish
     min_reply_markers: 2                  # a "hi" reply needs ≥ this many (or Devanagari)
     max_markers_in_english_reply: 3       # an "en" reply with more is the wrong language
+  english:
+    # Words that mark a tutee's message as English. The reply language only changes when a
+    # message has more markers of one language than the other; otherwise it stays as it is.
+    tutee_markers: [i, "i'm", im, my, me, need, want, looking, for, the, is, are, am, and,
+                    please, can, you, he, she, son, daughter, would, like, what, which,
+                    we, our, his, her, we're, it, in, at, with]
+    min_tutee_markers: 1
 
 # Money mentions the assistant must never introduce (FR-006). Amounts the tutee stated
 # themselves may be repeated back.

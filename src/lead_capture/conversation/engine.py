@@ -94,6 +94,7 @@ class Engine:
                 conv = self._new_conversation(db, contact, items)
             self._attach(db, conv, items)
             turn = Turn(contact, conv, items, lang=contact.language or "en")
+            self._follow_language(turn)
             await self._decide(db, turn)
             db.commit()
             for reply in turn.replies:
@@ -103,6 +104,13 @@ class Engine:
             self.on_lead_created()
 
     # ------------------------------------------------------------------ helpers
+    def _follow_language(self, turn: Turn) -> None:
+        """Reply in the language the tutee writes in; keep it when their message is unclear."""
+        text = " ".join(i.text for i in turn.items if i.type == "text" and i.text)
+        detected = ft.detect_language(text)
+        if detected:
+            turn.lang = turn.contact.language = detected
+
     def _now(self):
         """Current time from the Clock port (frozen in tests)."""
         return self.sv.clock.now()
@@ -266,8 +274,6 @@ class Engine:
             log.warning("extract_failed", extra={"conversation_id": turn.conv.id})
             return ExtractionResult(signals=Signals(understood=False))
         queries.record_usage(db, turn.conv.id, "extract", result.usage)
-        if result.signals.language in ("en", "hi"):
-            turn.lang = turn.contact.language = result.signals.language
         return result
 
     def _apply(self, conv: Conversation, req: Requirement, fields: dict):
@@ -473,6 +479,7 @@ class Engine:
         """
         self._attach(db, latest, items)
         turn = Turn(contact, latest, items, lang=contact.language or "en")
+        self._follow_language(turn)
         extraction = await self._extract(db, turn, Requirement())
         if extraction.fields or extraction.signals.new_student:
             db.execute(

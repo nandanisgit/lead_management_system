@@ -69,3 +69,12 @@ def test_close_completed_by_time_of_day():
     assert "today" in ft.close_completed(ContactWhen.TODAY, "en", "10 AM")
     assert "tomorrow" in ft.close_completed(ContactWhen.AFTER_START_TOMORROW, "en", "10 AM")
     assert "kal" in ft.close_completed(ContactWhen.AFTER_START_TOMORROW, "hi", "10 AM")
+
+
+def test_detect_language_is_clear_or_none():
+    assert ft.detect_language("I need a maths tutor for my son") == "en"
+    assert ft.detect_language("Mujhe beti ke liye online maths tutor chahiye") == "hi"
+    assert ft.detect_language("मुझे ट्यूटर चाहिए") == "hi"
+    assert ft.detect_language("My son is in class 9, CBSE hai") == "en"  # mostly English
+    for unclear in ["Nandani", "ICSE", "600", "Class 9", "ok", "", None]:
+        assert ft.detect_language(unclear) is None, unclear

@@ -39,11 +39,19 @@ class HindiMarkers(_Strict):
     max_markers_in_english_reply: int
 
 
+class EnglishMarkers(_Strict):
+    """Words that show a tutee is writing English (see config/messages.yaml → language.english)."""
+
+    tutee_markers: list[str]
+    min_tutee_markers: int
+
+
 class LanguageConfig(_Strict):
     """Language detection settings."""
 
     default: str
     hindi: HindiMarkers
+    english: EnglishMarkers
 
 
 class CurrencyConfig(_Strict):
@@ -97,19 +105,32 @@ def keys() -> list[str]:
     return list(get_messages().texts)
 
 
-def guess_language(message: str | None) -> str:
-    """Local Hindi/English guess for a tutee message.
+def detect_language(message: str | None) -> str | None:
+    """The language a tutee message is clearly written in ("en"/"hi"), or None if unclear.
 
-    Used before consent, when no model call is allowed yet.
+    Decided in code from the tutee's own words, not by the model: Devanagari script, or
+    more Hindi/Hinglish marker words than English ones (and enough of them), means Hindi;
+    the reverse means English. Names, board names, numbers and one-word answers are
+    unclear, so the conversation keeps its current language.
     """
-    msgs = get_messages()
-    hindi = msgs.language.hindi
     if not message:
-        return msgs.language.default
-    if re.search(f"[{hindi.script_range}]", message):
+        return None
+    lang = get_messages().language
+    if re.search(f"[{lang.hindi.script_range}]", message):
         return "hi"
-    found = msgs.words_pattern(hindi.tutee_markers).findall(message)
-    return "hi" if len(found) >= hindi.min_tutee_markers else msgs.language.default
+    msgs = get_messages()
+    hindi = len(msgs.words_pattern(lang.hindi.tutee_markers).findall(message))
+    english = len(msgs.words_pattern(lang.english.tutee_markers).findall(message))
+    if hindi > english and hindi >= lang.hindi.min_tutee_markers:
+        return "hi"
+    if english > hindi and english >= lang.english.min_tutee_markers:
+        return "en"
+    return None
+
+
+def guess_language(message: str | None) -> str:
+    """The language for a new conversation: the detected one, else the default."""
+    return detect_language(message) or get_messages().language.default
 
 
 # ---------------------------------------------------------------- field questions
