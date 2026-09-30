@@ -191,6 +191,7 @@ tested and demonstrated on its own. Every performance/cost number comes from
 - [X] T146 [US1] Tell the extraction model which fields the last question asked for (`TurnContext.asked`, prompt rule); when the model finds nothing in a short reply (≤ `conversation.short_answer_max_words`), offer it to the asked fields — fixed-value fields only on an exact valid value, free text only when it is the single text field asked; integration tests in `tests/integration/test_short_answers.py`
 - [X] T147 [US1] FR-033: `channel_name: true` on `contact_name` — pre-filled from the chat app's profile name instead of asked; summary shows "Contact: name, phone"; integration test in `tests/integration/test_profile_name.py`
 - [X] T148 [US1] Reply language decided in code from the tutee's own words every turn (Hindi vs English marker counts in `config/messages.yaml`); unclear messages (names, board names, numbers, taps) keep the current language; the model's language signal no longer switches it; tests in `tests/unit/test_fixed_texts.py` and `tests/integration/test_reply_language.py`
+- [X] T149 [US1] Commit before every model call so SQLite's write lock is never held while a (slow, local) model thinks — webhooks arriving mid-turn failed with "database is locked"; test with a file database in `tests/integration/test_db_not_locked_during_model_calls.py`
 
 **Checkpoint**: MVP — a real WhatsApp chat produces a correct `NEW` row; US1 tests and evals pass
 

@@ -111,6 +111,16 @@ class Engine:
         if detected:
             turn.lang = turn.contact.language = detected
 
+    @staticmethod
+    def _release(db: Session) -> None:
+        """Save progress before a model call, so the database isn't locked while it thinks.
+
+        SQLite allows one writer at a time. A model call can take a minute on a local model;
+        holding the write lock that long makes the next webhook's insert fail with
+        "database is locked". The per-contact lock still keeps turns for one tutee in order.
+        """
+        db.commit()
+
     def _now(self):
         """Current time from the Clock port (frozen in tests)."""
         return self.sv.clock.now()
@@ -268,8 +278,10 @@ class Engine:
         On model failure the turn continues as "not understood" (the tutee is asked to
         rephrase) instead of crashing.
         """
+        ctx = self._context(db, turn, req)
+        self._release(db)
         try:
-            result = await self.sv.llm.extract(self._context(db, turn, req))
+            result = await self.sv.llm.extract(ctx)
         except LLMError:
             log.warning("extract_failed", extra={"conversation_id": turn.conv.id})
             return ExtractionResult(signals=Signals(understood=False))
@@ -550,6 +562,7 @@ class Engine:
         ctx = self._context(db, turn, req)
         tutee_texts = [ln.text for ln in ctx.transcript if ln.role == "tutee"]
         for _ in range(self.cfg.llm.max_regenerations + 1):
+            self._release(db)
             try:
                 result = await self.sv.llm.write_reply(ctx, instruction)
             except LLMError:
