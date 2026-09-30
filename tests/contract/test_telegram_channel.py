@@ -3,6 +3,7 @@
 See contracts/telegram-webhook.md.
 """
 
+import asyncio
 import json
 import zlib
 
@@ -225,7 +226,7 @@ def test_payload_phone_request_is_a_contact_button():
 
 
 @respx.mock
-async def test_send_acknowledges_taps_then_sends():
+async def test_tap_acknowledged_once_and_reply_sent():
     ack = respx.post(f"{API}/answerCallbackQuery").mock(
         return_value=httpx.Response(200, json={"ok": True, "result": True})
     )
@@ -246,6 +247,7 @@ async def test_send_acknowledges_taps_then_sends():
         },
     }
     ch.parse_inbound(headers(), body(upd))
+    await asyncio.sleep(0.05)  # the acknowledgement runs in the background
     sent = await ch.send(ADDR, OutboundMessage(text="Great!"))
     assert sent.id == f"tg-out-{CHAT}-77"
     assert json.loads(ack.calls.last.request.content) == {"callback_query_id": "cb-9"}
@@ -298,3 +300,26 @@ def test_registry_builds_telegram_channel():
 def test_capabilities():
     caps = channel().capabilities
     assert caps.can_request_phone and not caps.contact_is_phone and not caps.has_service_window
+
+
+@respx.mock
+async def test_tap_is_acknowledged_immediately_inside_the_server():
+    ack = respx.post(f"{API}/answerCallbackQuery").mock(
+        return_value=httpx.Response(200, json={"ok": True, "result": True})
+    )
+    upd = {
+        "update_id": 10,
+        "callback_query": {
+            "id": "cb-10",
+            "data": "consent:yes",
+            "message": {
+                "message_id": 1,
+                "date": 1000,
+                "chat": {"id": CHAT, "type": "private"},
+            },
+        },
+    }
+    [m] = channel().parse_inbound(headers(), body(upd))  # running loop: ack in background
+    await asyncio.sleep(0.05)
+    assert ack.call_count == 1
+    assert m.timestamp.year >= 2026  # the tap's own time, not the old message's date

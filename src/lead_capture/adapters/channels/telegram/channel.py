@@ -7,6 +7,7 @@ parsing, keyboards, webhook registration) stays in this package.
 
 from __future__ import annotations
 
+import asyncio
 import hmac
 from collections.abc import Mapping
 
@@ -38,7 +39,8 @@ class TelegramChannel:
         """Build from channel settings and the bot token / webhook secret."""
         self._secret = secrets.telegram_webhook_secret
         self._sender = TelegramSender(settings, secrets.telegram_bot_token)
-        self._taps: dict[str, list[str]] = {}  # address → button taps to acknowledge
+        self._taps: dict[str, list[str]] = {}  # address → button taps not yet acknowledged
+        self._acks: set[asyncio.Task] = set()  # running acknowledgements (kept referenced)
         self.capabilities = Capabilities(
             max_buttons=MAX_INLINE_BUTTONS,
             max_list_rows=MAX_INLINE_BUTTONS,
@@ -61,8 +63,23 @@ class TelegramChannel:
             raise SignatureError("bad secret token")
         messages, taps = parser.parse(body)
         for tap in taps:
-            self._taps.setdefault(tap.address, []).append(tap.callback_id)
+            self._acknowledge(tap)
         return messages
+
+    def _acknowledge(self, tap: parser.Tap) -> None:
+        """Stop the button's spinner right away, without waiting for the (slow) reply.
+
+        Inside the web server there is a running event loop, so the acknowledgement is sent
+        in the background; otherwise it is sent before the next reply to that chat.
+        """
+        try:
+            loop = asyncio.get_running_loop()
+        except RuntimeError:
+            self._taps.setdefault(tap.address, []).append(tap.callback_id)
+            return
+        task = loop.create_task(self._sender.answer_tap(tap.callback_id))
+        self._acks.add(task)
+        task.add_done_callback(self._acks.discard)
 
     async def send(self, to: str, message: OutboundMessage) -> SentMessage:
         """Acknowledge pending button taps for this chat, then send the reply."""

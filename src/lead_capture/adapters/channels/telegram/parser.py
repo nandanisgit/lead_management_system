@@ -81,7 +81,8 @@ def _callback(update_id: Any, cb: dict) -> tuple[InboundMessage | None, Tap | No
         type="interactive",
         choice_id=str(cb["data"]),
         profile_name=(cb.get("from") or {}).get("first_name"),
-        timestamp=_ts((cb.get("message") or {}).get("date")),
+        # a tap carries no time of its own (message.date is when *we* sent the buttons)
+        timestamp=datetime.now(UTC),
     )
     return msg, Tap(addr, str(cb["id"])) if cb.get("id") else None
 
