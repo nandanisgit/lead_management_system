@@ -33,3 +33,5 @@ Thumbs.db
 .vscode/
 .idea/
 !.env.example
+# local database copies/backups (personal data — never commit)
+data.*/
