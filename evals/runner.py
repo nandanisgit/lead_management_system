@@ -16,7 +16,7 @@ from pathlib import Path
 import yaml
 
 from evals.checks import RunResult, median_bot_messages, score
-from evals.tutee import SimulatedTutee
+from evals.tutee import OllamaTuteeClient, SimulatedTutee
 from lead_capture.adapters.channels.fake import FakeChannel
 from lead_capture.adapters.clock import FrozenClock
 from lead_capture.adapters.leads.in_memory import InMemoryLeadRepository
@@ -93,6 +93,15 @@ def _outcome(conv: Conversation | None) -> str:
     return f"unfinished_{conv.state}"
 
 
+def _tutee_model_and_client(settings):
+    """The simulated tutee runs on the same provider as the bot: Ollama (free) or Claude."""
+    if settings.llm.provider == "ollama":
+        o = settings.llm.ollama
+        client = OllamaTuteeClient(o.base_url, o.timeout_seconds, o.context_window)
+        return settings.evals.ollama_tutee_model, client
+    return settings.evals.tutee_model, None
+
+
 async def run_one(scenario: dict, settings, secrets) -> RunResult:
     """Play one scenario: simulated tutee vs the real engine and model; score the result."""
     db = make_engine("sqlite://")
@@ -115,12 +124,14 @@ async def run_one(scenario: dict, settings, secrets) -> RunResult:
         sessions=make_session_factory(db),
     )
     engine = Engine(sv, on_lead_created=lambda: drain_once(sv))
+    tutee_model, tutee_client = _tutee_model_and_client(settings)
     tutee = SimulatedTutee(
-        settings.evals.tutee_model,
+        tutee_model,
         settings.evals.tutee_max_tokens,
         scenario["tutee_facts"],
         scenario.get("style", "plain English, short replies"),
         scenario.get("tutee_extra", ""),
+        client=tutee_client,
     )
     number = "+919000000001"
     transcript: list[tuple[str, str]] = []
@@ -216,16 +227,34 @@ def _sum_tokens(results):
     return dict(total)
 
 
-def run(scenario=None, pr_subset=False, model=None, repeats=None) -> int:
+def _eval_settings(provider: str | None, model: str | None):
+    """Settings for an eval run on a real model: ``anthropic`` or ``ollama``.
+
+    ``provider`` defaults to ``llm.provider`` (fake/stub fall back to anthropic, since evals
+    need a real model); ``model`` overrides that provider's reply model.
+    """
+    base = load_settings()
+    provider = provider or base.llm.provider
+    if provider not in ("anthropic", "ollama"):
+        provider = "anthropic"
+    over: dict = {"llm": {"provider": provider}}
+    if model:
+        if provider == "ollama":
+            over["llm"]["ollama"] = {"reply_model": model}
+        else:
+            over["llm"]["reply_model"] = model
+    return load_settings(**over)
+
+
+def run(scenario=None, pr_subset=False, model=None, repeats=None, provider=None) -> int:
     """Entry point for `lead-capture eval`; returns the process exit code."""
     secrets = Secrets()
-    if not (secrets.anthropic_api_key or os.environ.get("ANTHROPIC_API_KEY")):
-        print("ANTHROPIC_API_KEY is not set — evals need the real model.")
+    settings = _eval_settings(provider, model)
+    if settings.llm.provider == "anthropic" and not (
+        secrets.anthropic_api_key or os.environ.get("ANTHROPIC_API_KEY")
+    ):
+        print("ANTHROPIC_API_KEY is not set — use --provider ollama for free local evals.")
         return 2
-    over = {"llm": {"provider": "anthropic"}}
-    if model:
-        over["llm"]["reply_model"] = model
-    settings = load_settings(**over)
     scenarios = load_scenarios(scenario, pr_subset, settings.evals.pr_subset)
     if not scenarios:
         print("no matching scenarios")

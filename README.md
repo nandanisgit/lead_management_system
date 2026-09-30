@@ -37,4 +37,5 @@ Agent guidance is in [`CLAUDE.md`](CLAUDE.md); coding rules in
 | Tutor-requirement fields, allowed values, questions, summary, sheet columns | `config/requirement.yaml` |
 | The assistant's fixed texts and language markers | `config/messages.yaml` |
 | Models, limits, timeouts, retention, schedules, costs | `config/settings.yaml` |
+| Model provider: free local Ollama (default for now) or Claude | `llm.provider` in `config/settings.yaml` — see [quickstart](specs/001-whatsapp-lead-capture/quickstart.md#free-local-model-ollama-for-the-first-days) |
 | Secrets (API keys, sheet ID) | `.env` (copy `.env.example`) |

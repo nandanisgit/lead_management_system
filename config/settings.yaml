@@ -8,7 +8,8 @@ schema_files:
   messages_file: config/messages.yaml         # fixed texts, language markers
 
 llm:
-  provider: anthropic                 # R2; also: fake, stub
+  provider: ollama                    # R2: free local model for the first days; switch to anthropic for production. Also: fake, stub
+  # --- Claude API (provider: anthropic) ---
   extraction_model: claude-haiku-4-5  # small model is enough for structured extraction (R15: ~-25% cost)
   reply_model: claude-sonnet-5-5      # replies are what tutees judge
   combined_call: false                # one call per turn saves ~35% but replies before validation — experiment only
@@ -23,6 +24,18 @@ llm:
   skip_for_deterministic_turns: true  # button taps, greeting/consent, summary, closing use fixed texts
   max_regenerations: 1                # then fall back to the fixed text for the instruction
   stub_delay_seconds: [1.0, 3.0]      # StubLLMClient delay range (load tests)
+  # --- Ollama (provider: ollama): free, runs on your own machine. `ollama pull <model>` first ---
+  ollama:
+    base_url: http://localhost:11434  # where `ollama serve` listens
+    extraction_model: gemma3:12b      # multilingual (Hindi/Hinglish), follows JSON schemas; gemma3:4b if the machine is slow
+    reply_model: gemma3:12b
+    timeout_seconds: 60               # local models are slower than the API, esp. the first call that loads the model
+    max_concurrent_calls: 2           # a laptop serves ~1-2 requests at once; more just queue
+    context_window: 8192              # Ollama's default (2-4k) would cut off the prompt + field schema
+    temperature:
+      extraction: 0.0                 # deterministic structured output
+      reply: 0.7                      # natural-sounding replies
+    keep_alive: 30m                   # keep the model loaded between chats (avoids reload delay)
 
 conversation:
   max_questions_per_message: 2        # FR-001
@@ -79,6 +92,7 @@ evals:
   repeats: 3                          # R10: replies vary run to run
   pass_threshold: 0.95
   tutee_model: claude-haiku-4-5
+  ollama_tutee_model: gemma3:4b       # simulated tutee when evals run on Ollama (free)
   pr_subset: []                       # filled with 8 key scenarios in the polish phase (T120)
   max_turns: 20                       # a scenario stops after this many tutee messages
   tutee_max_tokens: 150               # simulated tutee replies are short WhatsApp messages

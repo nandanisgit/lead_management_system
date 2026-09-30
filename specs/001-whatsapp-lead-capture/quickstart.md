@@ -8,7 +8,7 @@ the code.
 
 - Python 3.12 and [uv](https://docs.astral.sh/uv/)
 - Docker (for production-like runs)
-- An Anthropic API key
+- An Anthropic API key — or, for the first days, [Ollama](https://ollama.com) (free, see below)
 - A Meta app with WhatsApp Cloud API: phone number ID, access token, app secret, a verify token of your choice; coexistence enabled on the business number (see [research.md R4](research.md))
 - A native Google Sheet with tabs `Leads`, `Handoffs`, `Lists` and headers exactly as in [contracts/lead-sheet.md](contracts/lead-sheet.md), shared as **Editor** with a service-account email
 - For live webhook tests from a laptop: a tunnel such as `cloudflared` or `ngrok`
@@ -32,6 +32,27 @@ uv run lead-capture sync-lists    # writes the allowed values from config/requir
 | `LEAD_SHEET_ID`, `GOOGLE_SERVICE_ACCOUNT_FILE` | service-account JSON path (never committed) |
 | `DATABASE_URL` | default `sqlite:///data/lead_capture.db` |
 | `TZ_NAME` | `Asia/Kolkata` |
+
+## Free local model (Ollama) for the first days
+
+`config/settings.yaml` ships with `llm.provider: ollama`, so no API key or model cost is needed:
+
+```bash
+brew install ollama          # or download from ollama.com
+ollama serve                 # leave running (the Mac app starts it automatically)
+ollama pull gemma3:12b       # the bot's model (llm.ollama.extraction_model / reply_model)
+ollama pull gemma3:4b        # the simulated tutee for evals (evals.ollama_tutee_model)
+uv run lead-capture chat --number +919999900001
+uv run lead-capture eval --provider ollama --scenario hinglish_home_dwarka
+```
+
+Slow machine: set both models to `gemma3:4b` (or `LC__LLM__OLLAMA__REPLY_MODEL=gemma3:4b`).
+The first message after a pause is slow while the model loads.
+
+**Switch to Claude** (before going live): set `llm.provider: anthropic` in
+`config/settings.yaml` (or `LC__LLM__PROVIDER=anthropic`) and put `ANTHROPIC_API_KEY` in
+`.env`. Run the full eval suite on Claude before production — Ollama results don't count
+toward the release gate.
 
 ## Automated validation
 

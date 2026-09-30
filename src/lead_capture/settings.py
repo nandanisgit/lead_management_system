@@ -34,10 +34,38 @@ class SchemaFiles(BaseModel):
     messages_file: str
 
 
-class LLMSettings(BaseModel):
-    """Model choice and cost/performance knobs per call (research R16)."""
+class _Temperatures(BaseModel):
+    """Sampling temperature per call type (providers that accept one)."""
 
-    provider: Literal["anthropic", "fake", "stub"]
+    extraction: float = Field(ge=0, le=2)
+    reply: float = Field(ge=0, le=2)
+
+
+class OllamaSettings(BaseModel):
+    """Local Ollama server used as a free model during development (research R2, R16).
+
+    Local models are slower than the Claude API and serve few requests at once, so they
+    get their own models, timeout, concurrency and context size instead of sharing Claude's.
+    """
+
+    base_url: str
+    extraction_model: str
+    reply_model: str
+    timeout_seconds: PositiveFloat
+    max_concurrent_calls: PositiveInt
+    context_window: PositiveInt
+    temperature: _Temperatures
+    keep_alive: str
+
+
+class LLMSettings(BaseModel):
+    """Model choice and cost/performance knobs per call (research R16).
+
+    ``extraction_model``/``reply_model``/``timeout_seconds``/``max_concurrent_calls`` at the
+    top level are for the Claude API; the ``ollama`` group has its own.
+    """
+
+    provider: Literal["anthropic", "ollama", "fake", "stub"]
     extraction_model: str
     reply_model: str
     combined_call: bool
@@ -50,6 +78,7 @@ class LLMSettings(BaseModel):
     skip_for_deterministic_turns: bool
     max_regenerations: int = Field(ge=0)
     stub_delay_seconds: tuple[float, float]
+    ollama: OllamaSettings
 
 
 class ConversationSettings(BaseModel):
@@ -136,6 +165,7 @@ class EvalsSettings(BaseModel):
     repeats: PositiveInt
     pass_threshold: float = Field(gt=0, le=1)
     tutee_model: str
+    ollama_tutee_model: str
     pr_subset: list[str]
     max_turns: PositiveInt
     tutee_max_tokens: PositiveInt

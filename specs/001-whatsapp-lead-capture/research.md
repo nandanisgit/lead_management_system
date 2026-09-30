@@ -42,6 +42,16 @@ be re-checked against current documentation during the Build stage.
 - **Provider independence**: the engine calls an `LLMClient` interface, not
   the Anthropic SDK directly (R16), so another model or provider can be
   swapped in via configuration.
+- **Free local model for the first days (2026-09-30)**: `llm.provider: ollama`
+  runs open models (default `gemma3:12b`, multilingual incl. Hindi) on a local
+  Ollama server at no API cost, for trying the service out and for free evals.
+  Extraction uses Ollama's structured output (the same JSON schema as the Claude
+  tool) instead of a tool call; prompts and validation are identical
+  (`adapters/llm/prompting.py`). Trade-offs: slower replies (seconds to tens of
+  seconds on a laptop, above the SC reply-time target), weaker Hinglish and
+  instruction-following than Claude, and the service must be able to reach the
+  Ollama server. Evals must pass on Claude before production; switching back is
+  `llm.provider: anthropic`.
 - **Alternatives considered**: a pure rules/form bot (fails G1 and G3); letting
   the model drive the whole flow and emit the final lead (violates Principle
   II); a cheaper model for extraction only (possible later optimisation, noted
@@ -474,7 +484,7 @@ load-test reports print the effective settings.
 | Group | Key | Default | Why this default |
 |---|---|---|---|
 | **Config files** | `schema_files.requirement_file` / `schema_files.messages_file` | `config/requirement.yaml` / `config/messages.yaml` | R12 |
-| **LLM** | `llm.provider` | `anthropic` | R2 |
+| **LLM** | `llm.provider` | `ollama` for the first days, then `anthropic` | R2 (free local model while trying the service out) |
 | | `llm.extraction_model` | `claude-haiku-4-5` | structured extraction works well on a small model; ≈ −25% cost (R15) |
 | | `llm.reply_model` | `claude-sonnet-5-5` | replies are what tutees judge |
 | | `llm.combined_call` | `false` | one call per turn saves ≈ 35% but writes the reply before validation — experiment only |
@@ -486,6 +496,13 @@ load-test reports print the effective settings.
 | | `llm.max_concurrent_calls` | `20` | protects rate limits during bursts |
 | | `llm.skip_for_deterministic_turns` | `true` | button taps, greeting/consent, summary, closing use fixed texts; ≈ −30–35% calls |
 | | `llm.max_regenerations` | `1` | then fall back to the fixed text for that instruction |
+| | `llm.ollama.base_url` | `http://localhost:11434` | where `ollama serve` listens |
+| | `llm.ollama.extraction_model` / `.reply_model` | `gemma3:12b` | multilingual (Hindi/Hinglish) and follows JSON schemas; `gemma3:4b` on slow machines |
+| | `llm.ollama.timeout_seconds` | `60` | local models are slower, especially the first call that loads the model |
+| | `llm.ollama.max_concurrent_calls` | `2` | a laptop serves one or two requests at once |
+| | `llm.ollama.context_window` | `8192` | Ollama's default would cut off the prompt and field schema |
+| | `llm.ollama.temperature.extraction` / `.reply` | `0.0` / `0.7` | deterministic extraction, natural replies |
+| | `llm.ollama.keep_alive` | `30m` | keeps the model loaded between chats |
 | **Conversation** | `conversation.max_questions_per_message` | `2` | FR-001 |
 | | `conversation.max_words_per_message` | `60` | FR-001 |
 | | `conversation.debounce_ms` | `2000` | R8 |
@@ -505,6 +522,7 @@ load-test reports print the effective settings.
 | **Jobs** | `jobs.stalled_every_minutes` / `jobs.handoff_sync_every_minutes` / `jobs.retention_cron` | `15` / `5` / `0 3 * * *` | R9 |
 | **Costs** | `costs.rates_file` / `costs.usd_to_inr` | `config/rates.yaml` / `88` | R15 |
 | **Evals** | `evals.repeats` / `evals.pass_threshold` / `evals.tutee_model` / `evals.pr_subset` | `3` / `0.95` / `claude-haiku-4-5` / 8 key scenarios, 1 run each | R10; full suite nightly and before release |
+| | `evals.ollama_tutee_model` | `gemma3:4b` | simulated tutee when evals run on Ollama (free) |
 | | `evals.max_turns` / `evals.tutee_max_tokens` / `evals.simulated_time` | `20` / `150` / `15:00` | R10 |
 | **Load** | `load.burst.concurrent_tutees` / `load.burst.peak_msgs_per_second` / `load.burst.minutes` | `30` / `5` / `10` | R13 |
 

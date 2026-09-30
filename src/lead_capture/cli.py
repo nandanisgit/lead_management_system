@@ -119,12 +119,19 @@ def eval_(
     pr_subset: bool = False,
     model: str | None = None,
     repeats: int | None = None,
+    provider: str | None = typer.Option(
+        None, help="anthropic | ollama (default: llm.provider in settings)"
+    ),
 ) -> None:
-    """Run conversation evals against the real model (simulated tutee)."""
+    """Run conversation evals against a real model (simulated tutee)."""
     _project_root_on_path()
     from evals.runner import run
 
-    raise typer.Exit(code=run(scenario=scenario, pr_subset=pr_subset, model=model, repeats=repeats))
+    raise typer.Exit(
+        code=run(
+            scenario=scenario, pr_subset=pr_subset, model=model, repeats=repeats, provider=provider
+        )
+    )
 
 
 @app.command()

@@ -45,6 +45,17 @@ def build_llm(s: Settings, secrets: Secrets, schema: RequirementSchema) -> LLMCl
             max_words=s.conversation.max_words_per_message,
         )
 
+    def ollama():
+        """Local Ollama server (free open models) with the same schema and limits."""
+        from lead_capture.adapters.llm.ollama import OllamaLLMClient
+
+        return OllamaLLMClient(
+            s.llm,
+            fields_schema=schema.llm_fields_schema(),
+            max_questions=s.conversation.max_questions_per_message,
+            max_words=s.conversation.max_words_per_message,
+        )
+
     def fake():
         """Scripted fake (tests)."""
         from lead_capture.adapters.llm.fake import FakeLLMClient
@@ -57,7 +68,11 @@ def build_llm(s: Settings, secrets: Secrets, schema: RequirementSchema) -> LLMCl
 
         return StubLLMClient(s.llm)
 
-    return _pick("llm", s.llm.provider, {"anthropic": anthropic, "fake": fake, "stub": stub})
+    return _pick(
+        "llm",
+        s.llm.provider,
+        {"anthropic": anthropic, "ollama": ollama, "fake": fake, "stub": stub},
+    )
 
 
 def build_channel(s: Settings, secrets: Secrets) -> MessagingChannel:

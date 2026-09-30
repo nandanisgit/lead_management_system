@@ -167,6 +167,14 @@ tested and demonstrated on its own. Every performance/cost number comes from
 - [X] T086 Document every module, class and function with why it exists; enforce with ruff pydocstyle (Google convention) in `pyproject.toml`
 - [X] T087 Write `docs/coding-guidelines.md` (no hard-coding, adding a field, interfaces, documentation) and link it from `CLAUDE.md`, the constitution (Principle VII, v1.2.0), the PR template and `README.md`
 
+### Free local model for the first days (2026-09-30): Ollama adapter (research R2, R16)
+
+- [X] T133 [US1] Move vendor-neutral prompt building (signal schema, extraction response schema, turn content, payload parsing) out of `src/lead_capture/adapters/llm/anthropic.py` into `src/lead_capture/adapters/llm/prompting.py`; split the provider-specific output line of `prompts/extraction.md` into `prompts/extraction_output_tool.md` and `prompts/extraction_output_json.md`
+- [X] T134 [US1] Contract test `OllamaLLMClient` against the shared LLM suite plus request-shape checks (JSON-schema `format`, models, options, timeout, retries all from settings) with respx in `tests/contract/test_ollama_llm_client.py`
+- [X] T135 [US1] Implement `OllamaLLMClient` (Ollama `/api/chat` over httpx, structured output via JSON schema, token counts for usage) in `src/lead_capture/adapters/llm/ollama.py`; add `llm.ollama` group (base URL, models, timeout, concurrency, context size, temperatures, keep-alive) to `config/settings.yaml` and `src/lead_capture/settings.py`; register provider `ollama` in `src/lead_capture/registry.py`; make it the default provider for the first days
+- [X] T136 [US1] Let evals run on Ollama: `lead-capture eval --provider ollama` uses Ollama for the bot and the simulated tutee (`evals.ollama_tutee_model`) in `evals/runner.py`, `evals/tutee.py`, `src/lead_capture/cli.py`, with a unit test
+- [X] T137 Document the free local setup and the switch back to Claude in `specs/001-whatsapp-lead-capture/quickstart.md`, `research.md` (R2, R16) and `README.md`
+
 **Checkpoint**: MVP — a real WhatsApp chat produces a correct `NEW` row; US1 tests and evals pass
 
 ---

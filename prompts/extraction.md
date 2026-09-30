@@ -16,4 +16,3 @@ Rules:
 - Complaints, abuse, safety concerns about a child, medical or financial distress, legal
   threats: complaint_or_sensitive.
 
-Always respond by calling the record_requirements tool.
