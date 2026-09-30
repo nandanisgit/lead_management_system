@@ -27,4 +27,4 @@ def test_when_team_contacts(hour, minute, expected):
 
 def test_reply_by_is_window_after_last_inbound():
     last = datetime(2026, 9, 29, 17, 0, tzinfo=IST)
-    assert format_ist(reply_by(last, 24), "Asia/Kolkata") == "2026-09-30 17:00"
+    assert format_ist(reply_by(last, 24), "Asia/Kolkata", "%Y-%m-%d %H:%M") == "2026-09-30 17:00"

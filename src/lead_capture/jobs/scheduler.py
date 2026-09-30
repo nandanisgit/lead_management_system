@@ -15,7 +15,10 @@ log = logging.getLogger(__name__)
 
 
 def _in_thread(fn: Callable[[Services], object], services: Services):
+    """Wrap a blocking job so it runs in a worker thread and never crashes the scheduler."""
+
     async def run() -> None:
+        """Run the job in the default executor; log (not raise) failures."""
         try:
             await asyncio.get_running_loop().run_in_executor(None, fn, services)
         except Exception:  # noqa: BLE001
@@ -26,6 +29,7 @@ def _in_thread(fn: Callable[[Services], object], services: Services):
 
 
 def build_scheduler(services: Services) -> AsyncIOScheduler:
+    """Scheduler with the outbox job; interval and time zone come from settings."""
     s = services.settings
     scheduler = AsyncIOScheduler(timezone=s.ops.timezone)
     scheduler.add_job(

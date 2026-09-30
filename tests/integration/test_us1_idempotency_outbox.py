@@ -1,6 +1,7 @@
 from sqlalchemy import select
 
 from lead_capture.adapters.leads.in_memory import InMemoryLeadRepository
+from lead_capture.domain.schema import get_schema
 from lead_capture.jobs.outbox import drain_once
 from lead_capture.ports.leads import RepositoryUnavailable
 from lead_capture.store.models import LeadOutbox, Message
@@ -18,8 +19,11 @@ async def test_duplicate_webhook_delivery(session_factory):
 
 
 class FlakyRepo(InMemoryLeadRepository):
+    """In-memory register that fails with a transient error while ``down`` is True."""
+
     def __init__(self):
-        super().__init__()
+        schema = get_schema()
+        super().__init__(schema.leads_layout(), schema.handoffs_layout(), timezone="Asia/Kolkata")
         self.down = True
 
     def append_lead(self, row):

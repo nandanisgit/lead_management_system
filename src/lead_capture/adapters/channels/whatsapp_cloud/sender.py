@@ -15,9 +15,12 @@ BUTTON_TITLE_MAX = 20
 ROW_TITLE_MAX = 24
 MAX_BUTTONS = 3
 MAX_ROWS = 10
+LIST_BUTTON_MAX = 20
+DEFAULT_LIST_LABEL = "…"  # only if the engine sent no label (it always does)
 
 
 def build_payload(to: str, message: OutboundMessage) -> dict:
+    """Cloud API payload: text, reply buttons (≤3 choices) or an interactive list (≤10)."""
     base = {"messaging_product": "whatsapp", "recipient_type": "individual", "to": to.lstrip("+")}
     choices = message.choices
     if not choices:
@@ -43,18 +46,30 @@ def build_payload(to: str, message: OutboundMessage) -> dict:
         "interactive": {
             "type": "list",
             "body": {"text": message.text},
-            "action": {"button": "Choose", "sections": [{"title": "Options", "rows": rows}]},
+            "action": {
+                "button": (message.list_button or DEFAULT_LIST_LABEL)[:LIST_BUTTON_MAX],
+                "sections": [
+                    {
+                        "title": (message.list_section or DEFAULT_LIST_LABEL)[:ROW_TITLE_MAX],
+                        "rows": rows,
+                    }
+                ],
+            },
         },
     }
 
 
 class CloudSender:
+    """Sends Cloud API messages with timeout and retries from channel settings."""
+
     def __init__(self, settings: ChannelSettings, secrets: Secrets) -> None:
+        """Endpoint and token from secrets; timeout and retries from channel settings."""
         self._settings = settings
         self._url = f"https://graph.facebook.com/{secrets.wa_api_version}/{secrets.wa_phone_number_id}/messages"
         self._token = secrets.wa_access_token
 
     async def send(self, to: str, message: OutboundMessage) -> SentMessage:
+        """POST the message; retry 429/5xx with exponential backoff, never retry other 4xx."""
         payload = build_payload(to, message)
         headers = {"Authorization": f"Bearer {self._token}"}
         attempts = self._settings.max_retries + 1

@@ -6,6 +6,8 @@ from enum import StrEnum
 
 
 class State(StrEnum):
+    """Conversation states (data-model.md lifecycle)."""
+
     AWAITING_CONSENT = "awaiting_consent"
     IN_PROGRESS = "in_progress"
     CONFIRMING = "confirming"
@@ -16,6 +18,8 @@ class State(StrEnum):
 
 
 class CloseReason(StrEnum):
+    """Why a conversation was closed without a lead."""
+
     DECLINED_CONSENT = "declined_consent"
     NOT_INTERESTED = "not_interested"
     OUT_OF_AREA = "out_of_area"
@@ -53,10 +57,13 @@ _ALLOWED: dict[State, set[State]] = {
 
 
 class InvalidTransition(ValueError):
+    """A state change the lifecycle does not allow (a bug, never user input)."""
+
     pass
 
 
 def can_transition(frm: str, to: str) -> bool:
+    """Whether the lifecycle allows moving from ``frm`` to ``to``."""
     return State(to) in _ALLOWED[State(frm)]
 
 
@@ -70,4 +77,5 @@ def transition(conv, to: State, reason: CloseReason | None = None) -> None:
 
 
 def creates_lead(frm: str, to: str) -> bool:
+    """Only CONFIRMING → COMPLETED creates a lead (constitution Principle II)."""
     return State(frm) == State.CONFIRMING and State(to) == State.COMPLETED

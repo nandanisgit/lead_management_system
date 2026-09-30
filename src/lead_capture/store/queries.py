@@ -13,6 +13,7 @@ from lead_capture.store.models import ACTIVE_STATES, Contact, Conversation, Mess
 
 
 def get_or_create_contact(s: Session, wa_number: str, profile_name: str | None = None) -> Contact:
+    """The contact for a number, created on first message; keeps the profile name current."""
     contact = s.scalar(select(Contact).where(Contact.wa_number == wa_number))
     if contact is None:
         contact = Contact(wa_number=wa_number, wa_profile_name=profile_name)
@@ -55,6 +56,7 @@ def store_message(
 
 
 def active_conversation(s: Session, contact_id: int, student_key: str | None = None):
+    """The contact's conversation that is still in progress (optionally for one student)."""
     q = select(Conversation).where(
         Conversation.contact_id == contact_id, Conversation.state.in_(ACTIVE_STATES)
     )
@@ -64,6 +66,7 @@ def active_conversation(s: Session, contact_id: int, student_key: str | None = N
 
 
 def latest_conversation(s: Session, contact_id: int):
+    """The contact's most recent conversation, whatever its state."""
     return s.scalars(
         select(Conversation)
         .where(Conversation.contact_id == contact_id)
@@ -71,7 +74,8 @@ def latest_conversation(s: Session, contact_id: int):
     ).first()
 
 
-def start_conversation(s: Session, contact_id: int, source: str = "organic", **kw) -> Conversation:
+def start_conversation(s: Session, contact_id: int, source: str, **kw) -> Conversation:
+    """Create a conversation with an empty requirement."""
     conv = Conversation(contact_id=contact_id, source=source, collected={}, **kw)
     s.add(conv)
     s.flush()
@@ -79,6 +83,7 @@ def start_conversation(s: Session, contact_id: int, source: str = "organic", **k
 
 
 def transcript(s: Session, conversation_id: int, limit: int) -> list[Message]:
+    """The last ``limit`` tutee/assistant messages, oldest first (model context)."""
     rows = s.scalars(
         select(Message)
         .where(Message.conversation_id == conversation_id, Message.direction.in_(("in", "out")))
@@ -89,6 +94,7 @@ def transcript(s: Session, conversation_id: int, limit: int) -> list[Message]:
 
 
 def inbound_count_since(s: Session, contact_id: int, since: datetime) -> int:
+    """How many messages a contact sent since ``since`` (turn limits)."""
     return s.scalar(
         select(func.count(Message.id)).where(
             Message.contact_id == contact_id,
@@ -101,6 +107,7 @@ def inbound_count_since(s: Session, contact_id: int, since: datetime) -> int:
 def record_usage(
     s: Session, conversation_id: int | None, kind: str, usage: TokenUsage | None = None
 ) -> None:
+    """Record a model call or outbound message for cost tracking (IDs and counts only)."""
     s.add(
         UsageEvent(
             conversation_id=conversation_id,

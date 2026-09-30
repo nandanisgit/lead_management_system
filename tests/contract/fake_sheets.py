@@ -8,23 +8,32 @@ from urllib.parse import unquote
 
 import httpx
 
-from lead_capture.adapters.leads.google_sheet import column_index
-from lead_capture.ports.leads import HANDOFF_HEADERS, LEAD_HEADERS
+from tests.contract.lead_repository_suite import HANDOFFS, LEADS
 
 SHEET_ID = "SHEET"
 BASE = f"https://sheets.googleapis.com/v4/spreadsheets/{SHEET_ID}"
 
 
+def col_index(letters: str) -> int:
+    """'A' → 0, 'AA' → 26."""
+    n = 0
+    for ch in letters:
+        n = n * 26 + (ord(ch) - 64)
+    return n - 1
+
+
 class FakeSheets:
-    def __init__(self, lead_headers=LEAD_HEADERS):
+    """Holds tab grids and answers the handful of API calls the adapter makes."""
+
+    def __init__(self, lead_headers=None):
         self.grids = {
-            "Leads": [list(lead_headers)],
-            "Handoffs": [list(HANDOFF_HEADERS)],
+            LEADS.tab: [list(lead_headers or LEADS.headers)],
+            HANDOFFS.tab: [list(HANDOFFS.headers)],
             "Lists": [],
         }
-        self.ids = {"Leads": 0, "Handoffs": 1, "Lists": 2}
+        self.ids = {LEADS.tab: 0, HANDOFFS.tab: 1, "Lists": 2}
         self.fail_next: int | None = None
-        self.writes: list[tuple[str, str]] = []  # (method, range) for write calls
+        self.writes: list[tuple[str, str]] = []
 
     def _split(self, rng):
         title, _, a1 = rng.partition("!")
@@ -37,7 +46,7 @@ class FakeSheets:
         if m:
             return [list(r) for r in grid[int(m.group(1)) - 1 : int(m.group(2))]]
         m = re.fullmatch(r"([A-Z]+):([A-Z]+)", a1)
-        lo, hi = column_index(m.group(1)), column_index(m.group(2))
+        lo, hi = col_index(m.group(1)), col_index(m.group(2))
         out = [list(r[lo : hi + 1]) for r in grid]
         while out and not any(out[-1]):
             out.pop()
@@ -62,7 +71,8 @@ class FakeSheets:
             rng = rng.removesuffix(":append")
             self.writes.append(("append", rng))
             title, _ = self._split(rng)
-            self.grids[title].extend(json.loads(request.content)["values"])
+            for row in json.loads(request.content)["values"]:
+                self.grids[title].append(row + [""] * (len(self.grids[title][0]) - len(row)))
             return httpx.Response(200, json={})
         if rng.endswith(":clear"):
             title, _ = self._split(rng.removesuffix(":clear"))
@@ -72,7 +82,7 @@ class FakeSheets:
             self.writes.append(("put", rng))
             title, a1 = self._split(rng)
             m = re.fullmatch(r"([A-Z]+)(\d+)", a1)
-            col, row0 = column_index(m.group(1)), int(m.group(2)) - 1
+            col, row0 = col_index(m.group(1)), int(m.group(2)) - 1
             grid = self.grids[title]
             for dr, values in enumerate(json.loads(request.content)["values"]):
                 while len(grid) <= row0 + dr:
@@ -84,13 +94,8 @@ class FakeSheets:
             return httpx.Response(200, json={})
         return httpx.Response(200, json={"values": self._read(rng)})
 
-    # helpers for the suite ---------------------------------------------------------
-    def row(self, title, key):
-        return next(r for r in self.grids[title][1:] if r and r[0] == key)
+    def row(self, title, key, key_index=0):
+        return next(r for r in self.grids[title][1:] if r and r[key_index] == key)
 
-    def set_cell(self, title, key, col_letter, value):
-        r = self.row(title, key)
-        i = column_index(col_letter)
-        while len(r) <= i:
-            r.append("")
-        r[i] = value
+    def set_cell(self, title, key, index, value):
+        self.row(title, key)[index] = value

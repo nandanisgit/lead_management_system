@@ -1,292 +1,179 @@
-"""Fixed English / Hindi (Hinglish, Roman script) texts for turns code can answer on its own.
+"""Fixed texts the assistant sends without a model call — loaded from config.
 
-Used for deterministic turns (llm.skip_for_deterministic_turns) and as the fallback whenever a
-model reply fails the guards. Every text keeps to ≤ 2 questions and ≤ 60 words.
+Why: deterministic turns (button taps, consent, summary, closing) don't need the model
+(cost saving, research R16), and every model reply needs a safe fallback when it fails the
+guards. The copy lives in config/messages.yaml and the field questions in
+config/requirement.yaml, so wording and fields change without code changes.
 """
 
 from __future__ import annotations
 
 import re
+from functools import lru_cache
+from pathlib import Path
 from typing import Any
 
+import yaml
+from pydantic import BaseModel, ConfigDict
+
 from lead_capture.domain.hours import ContactWhen
-from lead_capture.ports.channel import Choice
-
-Lang = str  # "en" | "hi"
-
-_HINGLISH = re.compile(
-    r"\b(chahiye|chahie|hai|hain|ke liye|mujhe|mera|meri|beta|beti|bacch[ae]|kya|aap|ji|"
-    r"karna|padhai|padhana|nahi|haan|kitna|kaise|abhi)\b",
-    re.I,
-)
-_DEVANAGARI = re.compile(r"[ऀ-ॿ]")
+from lead_capture.domain.schema import RequirementSchema
+from lead_capture.domain.templates import render
+from lead_capture.ports.channel import Choice, OutboundMessage
 
 
-def guess_language(text: str | None) -> Lang:
-    if not text:
-        return "en"
-    if _DEVANAGARI.search(text) or len(_HINGLISH.findall(text)) >= 1:
+class _Strict(BaseModel):
+    """Base for config models: unknown keys in messages.yaml are errors."""
+
+    model_config = ConfigDict(extra="forbid")
+
+
+class HindiMarkers(_Strict):
+    """Signals that text is Hindi/Hinglish (see config/messages.yaml → language.hindi)."""
+
+    script_range: str
+    tutee_markers: list[str]
+    reply_markers: list[str]
+    min_tutee_markers: int
+    min_reply_markers: int
+    max_markers_in_english_reply: int
+
+
+class LanguageConfig(_Strict):
+    """Language detection settings."""
+
+    default: str
+    hindi: HindiMarkers
+
+
+class CurrencyConfig(_Strict):
+    """Money markers the guards look for (FR-006)."""
+
+    before_amount: list[str]
+    after_amount: list[str]
+
+
+class Messages(_Strict):
+    """Everything in config/messages.yaml."""
+
+    texts: dict[str, dict[str, str]]
+    time_display_format: str
+    choices: dict[str, list[dict[str, str]]]
+    language: LanguageConfig
+    currency: CurrencyConfig
+
+    def words_pattern(self, words: list[str]) -> re.Pattern:
+        """Whole-word, case-insensitive pattern for a list of marker words."""
+        return re.compile(r"\b(" + "|".join(re.escape(w) for w in words) + r")\b", re.I)
+
+
+def load_messages(path: Path | str) -> Messages:
+    """Load and validate a messages file."""
+    return Messages.model_validate(yaml.safe_load(Path(path).read_text()))
+
+
+@lru_cache(maxsize=4)
+def _cached(path: str) -> Messages:
+    """Load a messages file once per path."""
+    return load_messages(path)
+
+
+def get_messages() -> Messages:
+    """The messages file named in settings, loaded once per process."""
+    from lead_capture.settings import ROOT, get_settings
+
+    return _cached(str(ROOT / get_settings().schema_files.messages_file))
+
+
+# ---------------------------------------------------------------- texts
+def text(key: str, lang: str = "en", **ctx: Any) -> str:
+    """A fixed text in ``lang`` (falls back to English), with placeholders filled."""
+    variants = get_messages().texts[key]
+    return render(variants.get(lang) or variants["en"], ctx)
+
+
+def keys() -> list[str]:
+    """All fixed-text keys (used by tests that check every text obeys the limits)."""
+    return list(get_messages().texts)
+
+
+def guess_language(message: str | None) -> str:
+    """Local Hindi/English guess for a tutee message.
+
+    Used before consent, when no model call is allowed yet.
+    """
+    msgs = get_messages()
+    hindi = msgs.language.hindi
+    if not message:
+        return msgs.language.default
+    if re.search(f"[{hindi.script_range}]", message):
         return "hi"
-    return "en"
+    found = msgs.words_pattern(hindi.tutee_markers).findall(message)
+    return "hi" if len(found) >= hindi.min_tutee_markers else msgs.language.default
 
 
-def _name(p: dict, key: str = "name") -> str:
-    v = p.get(key)
-    return f" {v}" if v else ""
+# ---------------------------------------------------------------- field questions
+def ask_text(fields: list[str], lang: str, schema: RequirementSchema, values: dict) -> str:
+    """The question for the next missing field(s).
 
-
-_TEXTS: dict[str, dict[Lang, str]] = {
-    "CONSENT": {
-        "en": "Hi{name}! I'm the tutoring team's assistant and I'll help you find the right tutor. "
-        "To do that I'll save the details you share; chats are kept {transcript_days} days and "
-        "requests for up to a year. Shall we go ahead?",
-        "hi": "Namaste{name}! Main tutoring team ki assistant hoon aur sahi tutor dhoondhne mein "
-        "aapki madad karungi. Iske liye aapki di hui details save hongi; chat {transcript_days} "
-        "din aur request ek saal tak rakhi jaati hai. Kya hum aage badhein?",
-    },
-    "CONSENT_REASK": {
-        "en": "Sorry, I didn't catch that. Is it okay for me to save your details so we can find "
-        "you a tutor?",
-        "hi": "Maaf kijiye, samajh nahi paayi. Kya main aapki details save kar sakti hoon "
-        "taaki hum tutor dhoondh sakein?",
-    },
-    "CLOSE_DECLINED": {
-        "en": "No problem, I haven't saved anything. If you change your mind, just message us "
-        "here anytime.",
-        "hi": "Koi baat nahi, maine kuch save nahi kiya. Mann badle toh kabhi bhi yahan message "
-        "kar dijiye.",
-    },
-    "ASK_OPEN": {
-        "en": "Great! Tell me a bit about what you're looking for — which class, subjects, and "
-        "whether you'd like online or home tuition.",
-        "hi": "Badhiya! Thoda bataiye aapko kya chahiye — kaunsi class, kaunse subjects, aur "
-        "online ya home tuition?",
-    },
-    "ASK_contact_name_relationship": {
-        "en": "May I know your name, and are you the parent or the student?",
-        "hi": "Aapka naam kya hai, aur aap parent hain ya student?",
-    },
-    "ASK_contact_name": {
-        "en": "May I know your name?",
-        "hi": "Aapka naam kya hai?",
-    },
-    "ASK_relationship": {
-        "en": "Are you the parent or the student?",
-        "hi": "Aap parent hain ya student?",
-    },
-    "ASK_GENERIC": {
-        "en": "Could you tell me a little more about what you need?",
-        "hi": "Kya aap thoda aur bata sakte hain ki aapko kya chahiye?",
-    },
-    "ASK_student_name": {
-        "en": "What's the student's name?",
-        "hi": "Student ka naam kya hai?",
-    },
-    "ASK_grade_level_board": {
-        "en": "Which class is{student} in, and which board — CBSE, ICSE or State?",
-        "hi": "{student_hi} kaunsi class mein hai, aur board kaunsa hai — CBSE, ICSE ya State?",
-    },
-    "ASK_grade_level": {
-        "en": "Which class or level is{student} in?",
-        "hi": "{student_hi} kaunsi class ya level mein hai?",
-    },
-    "ASK_board": {
-        "en": "Which board is it?",
-        "hi": "Board kaunsa hai?",
-    },
-    "ASK_subjects": {
-        "en": "Which subjects do you need help with?",
-        "hi": "Kaunse subjects ke liye tutor chahiye?",
-    },
-    "ASK_mode": {
-        "en": "Would you prefer online classes or a tutor coming home?",
-        "hi": "Aap online classes chahenge ya ghar par tutor?",
-    },
-    "ASK_area_city": {
-        "en": "Which area and city are you in? (Home tuition is available across Delhi/NCR.)",
-        "hi": "Aap kis area aur city mein hain? (Home tuition Delhi/NCR mein available hai.)",
-    },
-    "ASK_area": {
-        "en": "Which area are you in?",
-        "hi": "Aap kis area mein hain?",
-    },
-    "ASK_city": {
-        "en": "Which city is that in?",
-        "hi": "Yeh kis city mein hai?",
-    },
-    "ASK_schedule": {
-        "en": "Which days and times usually work best?",
-        "hi": "Kaunse din aur kis time aapke liye theek rahega?",
-    },
-    "ASK_start_date": {
-        "en": "When would you like to start — as soon as possible, or a specific date?",
-        "hi": "Kab se shuru karna chahenge — jaldi se jaldi, ya koi khaas date?",
-    },
-    "ASK_budget_min_budget_unit": {
-        "en": "Do you have a budget in mind, per hour or per month? A rough figure is fine.",
-        "hi": "Aapka budget kitna hai, per hour ya per month? Andaaz se bata dijiye.",
-    },
-    "ASK_budget_min": {
-        "en": "Roughly what budget would you be comfortable with?",
-        "hi": "Andaazan kitna budget theek rahega?",
-    },
-    "ASK_budget_unit": {
-        "en": "Is that per hour or per month?",
-        "hi": "Yeh per hour hai ya per month?",
-    },
-    "ASK_guardian_name_guardian_relationship": {
-        "en": "Could you share your parent's or guardian's name, and how they're related to you? "
-        "Our team will speak with them.",
-        "hi": "Apne parent ya guardian ka naam bata sakte ho, aur woh aapke kya lagte hain? Hamari "
-        "team unse baat karegi.",
-    },
-    "ASK_guardian_name": {
-        "en": "What's your parent's or guardian's name?",
-        "hi": "Apne parent ya guardian ka naam bataoge?",
-    },
-    "ASK_guardian_relationship": {
-        "en": "How are they related to you — mother, father or guardian?",
-        "hi": "Woh aapke kya lagte hain — mummy, papa ya guardian?",
-    },
-    "CLARIFY": {
-        "en": "Sorry, I couldn't use that — could you check the {fields}?",
-        "hi": "Maaf kijiye, yeh samajh nahi aaya — kya aap {fields} dobara bata sakte hain?",
-    },
-    "SUMMARY_LEAD_IN": {
-        "en": "Here's what I have:",
-        "hi": "Maine yeh note kiya hai:",
-    },
-    "SUMMARY_CONFIRM": {
-        "en": "Is this all correct?",
-        "hi": "Kya sab sahi hai?",
-    },
-    "SUMMARY_MINOR": {
-        "en": "Please share this with your parent or guardian too.",
-        "hi": "Ise apne parent ya guardian ke saath bhi share kar dena.",
-    },
-    "ASK_CHANGE": {
-        "en": "Sure — what would you like to change?",
-        "hi": "Zaroor — kya badalna hai?",
-    },
-    "CLOSE_COMPLETED_today": {
-        "en": "Thank you! I've passed this to our team and they'll get in touch with you today.",
-        "hi": "Dhanyavaad! Maine yeh team ko bhej diya hai, woh aaj hi aapse sampark karenge.",
-    },
-    "CLOSE_COMPLETED_after_start_today": {
-        "en": "Thank you! I've passed this to our team and they'll reach out after {start} today.",
-        "hi": "Dhanyavaad! Maine yeh team ko bhej diya hai, woh aaj {start} ke baad sampark "
-        "karenge.",
-    },
-    "CLOSE_COMPLETED_after_start_tomorrow": {
-        "en": "Thank you! I've passed this to our team and they'll reach out after {start} "
-        "tomorrow.",
-        "hi": "Dhanyavaad! Maine yeh team ko bhej diya hai, woh kal {start} ke baad sampark "
-        "karenge.",
-    },
-    "POST_COMPLETION": {
-        "en": "Thanks! Our team has your request and will be in touch. If you need a tutor for "
-        "someone else too, just tell me.",
-        "hi": "Dhanyavaad! Team ke paas aapki request hai, woh sampark karenge. Kisi aur ke liye "
-        "bhi tutor chahiye toh bata dijiye.",
-    },
-    "REPHRASE": {
-        "en": "Sorry, I didn't quite get that. Could you say it another way?",
-        "hi": "Maaf kijiye, theek se samajh nahi aaya. Kya aap doosre tareeke se bata sakte hain?",
-    },
-    "FEES_OR_TUTORS": {
-        "en": "Our team will share fees and tutor details once they've reviewed your request.",
-        "hi": "Fees aur tutor ki details team aapki request dekhkar share karegi.",
-    },
-    "OFF_TOPIC_REDIRECT": {
-        "en": "Let's get your tutor sorted first.",
-        "hi": "Pehle aapke liye tutor dhoondh lete hain.",
-    },
-    "RATE_LIMITED": {
-        "en": "Thanks for your messages! Our team will follow up with you shortly.",
-        "hi": "Aapke messages ke liye dhanyavaad! Hamari team jaldi aapse sampark karegi.",
-    },
-    "ASK_FOR_TEXT": {
-        "en": "Sorry, I can only read text messages. Could you type your answer?",
-        "hi": "Maaf kijiye, main sirf text message padh sakti hoon. Kya aap type karke bata sakte "
-        "hain?",
-    },
-}
-
-FIELD_LABELS: dict[str, dict[Lang, str]] = {
-    "contact_name": {"en": "your name", "hi": "aapka naam"},
-    "relationship": {"en": "parent or student", "hi": "parent ya student"},
-    "student_name": {"en": "student's name", "hi": "student ka naam"},
-    "grade_level": {"en": "class", "hi": "class"},
-    "board": {"en": "board", "hi": "board"},
-    "subjects": {"en": "subjects", "hi": "subjects"},
-    "mode": {"en": "online or home", "hi": "online ya home"},
-    "area": {"en": "area", "hi": "area"},
-    "city": {"en": "city", "hi": "city"},
-    "pincode": {"en": "PIN code", "hi": "PIN code"},
-    "schedule": {"en": "days and times", "hi": "din aur time"},
-    "start_date": {"en": "start date", "hi": "shuru karne ki date"},
-    "budget_min": {"en": "budget", "hi": "budget"},
-    "budget_max": {"en": "budget", "hi": "budget"},
-    "budget_unit": {"en": "per hour or per month", "hi": "per hour ya per month"},
-    "guardian_name": {"en": "parent's or guardian's name", "hi": "parent/guardian ka naam"},
-    "guardian_relationship": {"en": "how they're related", "hi": "rishta"},
-    "email": {"en": "email", "hi": "email"},
-}
-
-
-def text(key: str, lang: Lang = "en", **params: Any) -> str:
-    variants = _TEXTS[key]
-    template = variants.get(lang) or variants["en"]
-    student = params.get("student")
-    params = {
-        "name": _name(params),
-        "student": f" {student}" if student else "",
-        "student_hi": student or "Student",
-        **{k: v for k, v in params.items() if k not in ("name", "student")},
-    }
-    return template.format(**params)
-
-
-def ask_key(fields: list[str]) -> str:
-    return "ASK_" + "_".join(fields)
-
-
-def ask_text(fields: list[str], lang: Lang, **params: Any) -> str:
-    key = ask_key(fields)
-    if key in _TEXTS:
-        return text(key, lang, **params)
-    parts = [text(ask_key([f]), lang, **params) for f in fields if ask_key([f]) in _TEXTS]
+    Uses the group question when the whole group is asked, otherwise each field's own
+    question, and a generic fallback when none is configured.
+    """
+    ctx = {name: schema.display(name, value, lang) for name, value in values.items()}
+    for group in schema.ask_groups:
+        if group.fields == fields and group.ask:
+            return render(group.ask.get(lang) or group.ask["en"], ctx)
+    parts = []
+    for name in fields:
+        ask = schema.fields[name].ask
+        if ask:
+            parts.append(render(ask.get(lang) or ask["en"], ctx))
     return " ".join(parts) or text("ASK_GENERIC", lang)
 
 
-def clarify_text(fields: list[str], lang: Lang) -> str:
-    labels = ", ".join(FIELD_LABELS.get(f, {}).get(lang, f) for f in fields)
+def clarify_text(fields: list[str], lang: str, schema: RequirementSchema) -> str:
+    """Ask the tutee to re-check values that failed validation, named by their labels."""
+    labels = ", ".join(schema.label(name, lang) for name in fields)
     return text("CLARIFY", lang, fields=labels)
 
 
-def consent_choices(lang: Lang) -> list[Choice]:
-    yes, no = ("Haan, aage badhein", "Nahi") if lang == "hi" else ("Yes, go ahead", "No")
-    return [Choice(id="consent:yes", title=yes), Choice(id="consent:no", title=no)]
-
-
-def mode_choices(lang: Lang) -> list[Choice]:
-    home = "Ghar par" if lang == "hi" else "Home"
-    either = "Koi bhi" if lang == "hi" else "Either"
+def field_choices(name: str, lang: str, schema: RequirementSchema) -> list[Choice]:
+    """Tap options for a field asked on its own (from its ``buttons`` lists), or []."""
+    spec = schema.fields[name]
+    labels = spec.button_labels.get(lang) or spec.button_labels.get("en") or {}
     return [
-        Choice(id="mode:online", title="Online"),
-        Choice(id="mode:home", title=home),
-        Choice(id="mode:either", title=either),
+        Choice(id=f"{name}:{value}", title=labels.get(value, value))
+        for value in schema.button_options(name)
     ]
 
 
-def board_choices(boards: list[str]) -> list[Choice]:
-    return [Choice(id=f"board:{b}", title=b) for b in boards]
+def choices(kind: str, lang: str) -> list[Choice]:
+    """Tap options that are not field values (consent, confirm) from config."""
+    return [Choice(id=c["id"], title=c.get(lang) or c["en"]) for c in get_messages().choices[kind]]
 
 
-def confirm_choices(lang: Lang) -> list[Choice]:
-    yes, change = ("Haan, sahi hai", "Kuch badalna hai") if lang == "hi" else ("Confirm", "Change")
-    return [Choice(id="confirm:yes", title=yes), Choice(id="confirm:change", title=change)]
+def choice_prefixes(schema: RequirementSchema) -> tuple[str, ...]:
+    """Every tap-id prefix the engine understands: consent/confirm plus button fields."""
+    fixed = tuple(f"{kind}:" for kind in get_messages().choices)
+    fields = tuple(f"{name}:" for name, spec in schema.fields.items() if spec.buttons)
+    return fixed + fields
 
 
-def close_completed(when: ContactWhen, lang: Lang, start: str) -> str:
+def with_choices(message_text: str, options: list[Choice], lang: str) -> OutboundMessage:
+    """A reply with tap options, including the list labels channels show for long lists."""
+    return OutboundMessage(
+        text=message_text,
+        choices=options,
+        list_button=text("LIST_BUTTON", lang) if options else None,
+        list_section=text("LIST_SECTION", lang) if options else None,
+    )
+
+
+def display_time(at) -> str:
+    """A time as tutees see it (config: time_display_format), e.g. "10 AM"."""
+    return at.strftime(get_messages().time_display_format)
+
+
+def close_completed(when: ContactWhen, lang: str, start: str) -> str:
+    """Closing message saying when the operations team will get in touch (FR-018)."""
     return text(f"CLOSE_COMPLETED_{when.value}", lang, start=start)

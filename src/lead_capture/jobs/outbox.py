@@ -1,4 +1,9 @@
-"""Drain the lead outbox into the LeadRepository (research R6). Exactly once, never lost."""
+"""Drain the lead outbox into the LeadRepository (research R6).
+
+Why: a confirmed lead is first saved locally in the same transaction as the conversation
+change, then written to the sheet here — retried with backoff until it succeeds — so a
+Google outage never loses a lead, and the Lead ID check means it is never written twice.
+"""
 
 from __future__ import annotations
 
@@ -7,7 +12,7 @@ from datetime import timedelta
 
 from sqlalchemy import or_, select
 
-from lead_capture.ports.leads import LeadRow, RepositoryContractError, RepositoryUnavailable
+from lead_capture.ports.leads import RepositoryContractError, RepositoryUnavailable, SheetRow
 from lead_capture.services import Services
 from lead_capture.store.models import LeadOutbox
 
@@ -30,7 +35,7 @@ def drain_once(services: Services) -> int:
         ).all()
         for item in pending:
             try:
-                services.leads.append_lead(LeadRow.model_validate(item.row))
+                services.leads.append_lead(SheetRow(values=item.row["values"]))
             except (RepositoryUnavailable, RepositoryContractError) as exc:
                 item.attempts += 1
                 item.last_error = type(exc).__name__

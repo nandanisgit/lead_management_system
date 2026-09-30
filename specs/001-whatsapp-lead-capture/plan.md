@@ -58,9 +58,10 @@ cost optimisations cut model cost by ≈ 70% (research R15/R16).
 | Principle | How this plan complies | Pre-research | Post-design |
 |---|---|---|---|
 | I. Intent is the source of truth | Every user story maps to G1–G7; nothing from Non-goals (no matching, pricing, scheduling, broadcasts). Required fields and lifecycle match intent §6 and §8. | ✅ | ✅ |
-| II. Validated data only | Model output is a proposal via `record_requirements`; the `Requirement` Pydantic model validates against `config/lists.yaml`; only `confirming → completed` creates an outbox row; sheet access only via `LeadRepository`; append-only A–Z, never AA–AC. | ✅ | ✅ |
+| II. Validated data only | Model output is a proposal via `record_requirements`; `Requirement.apply` validates against the field definitions in `config/requirement.yaml`; only `confirming → completed` creates an outbox row; sheet access only via `LeadRepository`; append-only to the bot-owned columns, never the ops columns. | ✅ | ✅ |
 | III. Test-first, eval-backed | pytest for deterministic code with fakes; simulated-tutee eval suite with checks mapped to SC-001/002/003/008; load profiles verify SC-005/006/007 before release; CI gates on tests and evals. | ✅ | ✅ |
 | IV. Privacy and consent | Consent before collection (`awaiting_consent` state); retention jobs 90 days / 1 year; deletion on request; logs carry IDs only; secrets via env; service account scoped to one sheet. | ✅ | ✅ |
+| VII. Documented, data-driven | Every field defined only in `config/requirement.yaml` (validation, questions, summary, sheet row, model schema generated from it); fixed texts in `config/messages.yaml`; every module/class/function documented (ruff pydocstyle). | ✅ | ✅ |
 | VI. Configurable and swappable | Engine depends only on `LLMClient`, `MessagingChannel`, `LeadRepository`, `TurnQueue`, `ConversationLock`, `Clock`; vendor SDKs only in `adapters/`; every tunable number in `config/settings.yaml`; eval/load reports record effective settings. | ✅ | ✅ |
 | V. Small, reversible steps | One service, one DB file, no external queue; outbox and per-number locks give idempotency; dedupe on `wa_message_id` and Lead ID. | ✅ | ✅ (one justified deviation below) |
 
@@ -96,7 +97,7 @@ src/lead_capture/
 ├── ports/                  # Interfaces + normalised types (no vendor imports)
 │   ├── llm.py              # LLMClient, ExtractionResult, TokenUsage
 │   ├── channel.py          # MessagingChannel, InboundMessage, OutboundMessage, Choice, Capabilities
-│   ├── leads.py            # LeadRepository, LeadRow, HandoffRow, errors
+│   ├── leads.py            # LeadRepository, SheetLayout, SheetRow, errors
 │   ├── queue.py            # TurnQueue
 │   ├── locks.py            # ConversationLock
 │   └── clock.py            # Clock
@@ -115,15 +116,17 @@ src/lead_capture/
 │   ├── locks_memory.py     # in-memory ConversationLock
 │   └── clock.py            # SystemClock, FrozenClock
 ├── domain/
-│   ├── requirement.py      # Requirement model + validators
-│   ├── lists.py            # Loads config/lists.yaml
+│   ├── schema.py           # Loads + validates config/requirement.yaml (the field definitions)
+│   ├── field_types.py      # One validator per field type (no field names)
+│   ├── templates.py        # {placeholder}/[optional] renderer for config texts
+│   ├── requirement.py      # Requirement: validated values + config-driven cross-field rules
 │   ├── ids.py              # Lead / handoff ID generation
 │   └── hours.py            # Ops-hours logic for closing messages
 ├── conversation/
 │   ├── engine.py           # One turn: load → extract → validate → decide → reply
 │   ├── states.py           # Lifecycle state machine
 │   ├── planner.py          # Missing fields → next instruction
-│   ├── fixed_texts.py      # EN/HI texts for deterministic turns (no model call)
+│   ├── fixed_texts.py      # Loads config/messages.yaml; questions/choices from the schema
 │   ├── guards.py           # Question/word/currency/language checks
 │   └── dispatcher.py       # Debounce, pulls turns from TurnQueue
 ├── store/
@@ -141,7 +144,9 @@ src/lead_capture/
 
 prompts/assistant.md        # System prompt (tone, language, rules)
 config/settings.yaml        # All performance/cost parameters + adapter choice (research R16)
-config/lists.yaml           # Allowed values
+config/requirement.yaml     # THE place for requirement fields, allowed values, sheet layout (R12)
+config/messages.yaml        # Fixed texts, tap-option titles, language/currency markers
+docs/coding-guidelines.md   # No hard-coding, interfaces, documentation rules
 config/rates.yaml           # WhatsApp and model rates for cost reports (research R15)
 migrations/                 # Alembic
 evals/
@@ -168,7 +173,7 @@ service with a CLI. No frontend: the operations team works in the Google Sheet.
 
 ## Implementation Phases (input for /speckit-tasks)
 
-1. **Foundation** — project skeleton, `config/settings.yaml` + validated settings model, `ports/` interfaces with fake adapters and shared contract tests, adapter registry, SQLite models + migrations, `config/lists.yaml`, `Requirement` validation, IDs, ops-hours logic, CI.
+1. **Foundation** — project skeleton, `config/settings.yaml` + validated settings model, `ports/` interfaces with fake adapters and shared contract tests, adapter registry, SQLite models + migrations, `config/requirement.yaml` (fields) and `config/messages.yaml` (texts), `Requirement` validation, IDs, ops-hours logic, CI.
 2. **US1 core (MVP)** — webhook verify/receive/dedupe, sender, extraction + reply calls, state machine and planner, summary/confirmation, outbox + `GoogleSheetLeadRepository`, closing message by time of day, local `chat` CLI, first eval scenarios.
 3. **US2** — resume and recap, stalled job, multiple students per number, duplicate-lead prevention.
 4. **US3** — out-of-area flow, unsupported language, not interested / STOP.

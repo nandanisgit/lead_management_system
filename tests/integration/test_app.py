@@ -1,11 +1,11 @@
 from fastapi.testclient import TestClient
 
 from lead_capture.adapters.channels.fake import FakeChannel
-from lead_capture.adapters.leads.in_memory import InMemoryLeadRepository
 from lead_capture.adapters.llm.fake import FakeLLMClient
 from lead_capture.app import create_app
 from lead_capture.services import build_services
 from lead_capture.settings import load_settings
+from tests.conftest import memory_repo
 
 
 def make(session_factory, handler=None):
@@ -13,7 +13,7 @@ def make(session_factory, handler=None):
         load_settings(),
         llm=FakeLLMClient(),
         channel=FakeChannel(),
-        leads=InMemoryLeadRepository(),
+        leads=memory_repo(),
         sessions=session_factory,
     )
     return services, TestClient(create_app(services, handler))
@@ -41,3 +41,4 @@ def test_webhook_verify_and_signature(session_factory):
     bad_headers, _ = services.channel.make_payload([], valid=False)
     assert client.post("/webhooks/fake", content=body, headers=bad_headers).status_code == 401
     assert client.get("/webhooks/unknown", params={}).status_code == 404
+    assert client.get("/webhooks/whatsapp", params={}).status_code == 404  # not the configured one

@@ -17,4 +17,4 @@ tutee_facts:
   guardian_relationship: mother
 expect:
   outcome: lead_recorded
-  lead_notes_start: "MINOR – consent given by student"
+  lead_cell_starts: {Notes: "MINOR – consent given by student"}

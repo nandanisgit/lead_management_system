@@ -1,4 +1,9 @@
-"""Deterministic eval checks mapped to the spec's success criteria (research R10)."""
+"""Deterministic eval checks mapped to the spec's success criteria (research R10).
+
+Why: model output varies run to run, so conversation quality is judged by repeatable checks
+on the outcome — was the right lead recorded, was anything asked twice, was a budget ever
+suggested — rather than by exact wording. Column positions come from the schema.
+"""
 
 from __future__ import annotations
 
@@ -7,39 +12,14 @@ import statistics
 from dataclasses import dataclass, field
 
 from lead_capture.conversation import guards
+from lead_capture.domain.schema import RequirementSchema
 from lead_capture.settings import ConversationSettings
-
-_LEAD_COLUMNS = {
-    "contact_name": 3,
-    "relationship": 4,
-    "student_name": 5,
-    "grade_level": 6,
-    "board": 7,
-    "subjects": 8,
-    "mode": 9,
-    "area": 10,
-    "city": 11,
-    "schedule": 13,
-    "start_date": 14,
-    "budget_min": 15,
-    "budget_max": 16,
-    "budget_unit": 17,
-}
-_EXACT = {
-    "relationship",
-    "grade_level",
-    "board",
-    "mode",
-    "city",
-    "budget_min",
-    "budget_max",
-    "budget_unit",
-    "start_date",
-}
 
 
 @dataclass
 class RunResult:
+    """One simulated conversation and its check results."""
+
     scenario: str
     outcome: str
     bot_messages: list[str]
@@ -52,27 +32,50 @@ class RunResult:
 
 
 def _norm(value) -> str:
-    return re.sub(r"\s+", " ", str(value)).strip().lower()
+    """Case/space/underscore-insensitive form for comparing expected and recorded values."""
+    return re.sub(r"\s+", " ", str(value)).strip().lower().replace("_", " ")
 
 
-def lead_matches_facts(row: list, facts: dict, notes: list[str]) -> bool:
+def _field_columns(schema: RequirementSchema) -> dict[str, int]:
+    """Field name → Leads column index, from the configured sheet layout."""
+    layout = schema.leads_layout()
+    return {
+        col.value.partition(".")[2]: layout.index(col.header)
+        for col in schema.sheet.leads.columns
+        if col.value and col.value.startswith("field.")
+    }
+
+
+def _expected(facts: dict) -> dict:
+    """Scenario facts with the budget shorthand ({min, max, unit}) expanded to fields."""
+    out = dict(facts)
+    if "budget" in out:
+        b = out.pop("budget")
+        out.setdefault("budget_min", b.get("min"))
+        out.setdefault("budget_max", b.get("max", b.get("min")))
+        out.setdefault("budget_unit", b.get("unit"))
+    return out
+
+
+def lead_matches_facts(row: list, facts: dict, schema: RequirementSchema, notes: list[str]) -> bool:
+    """SC-001: every stated fact is in the recorded lead.
+
+    Choice-like fields must match exactly; free text only needs to contain (or be contained
+    in) the stated fact.
+    """
     ok = True
-    expected = dict(facts)
-    if "budget" in expected:
-        b = expected.pop("budget")
-        expected.setdefault("budget_min", b.get("min"))
-        expected.setdefault("budget_max", b.get("max", b.get("min")))
-        expected.setdefault("budget_unit", b.get("unit", "").replace("_", " "))
-    for key, col in _LEAD_COLUMNS.items():
-        if key not in expected or expected[key] is None:
+    columns = _field_columns(schema)
+    for key, want in _expected(facts).items():
+        if key not in columns or want is None:
             continue
-        want, got = expected[key], row[col]
-        if key == "subjects":
-            match = {_norm(s) for s in want} == {_norm(s) for s in str(got).split(",")}
-        elif key in _EXACT:
-            match = _norm(want).replace("_", " ") == _norm(got).replace("_", " ")
-        else:
+        got = row[columns[key]]
+        spec = schema.fields[key]
+        if spec.type == "multi_choice":
+            match = {_norm(v) for v in want} == {_norm(v) for v in str(got).split(",")}
+        elif spec.type == "text":
             match = _norm(want) in _norm(got) or _norm(got) in _norm(want)
+        else:
+            match = _norm(want) == _norm(got)
         if not match:
             ok = False
             notes.append(f"{key}: expected {want!r}, got {got!r}")
@@ -80,7 +83,7 @@ def lead_matches_facts(row: list, facts: dict, notes: list[str]) -> bool:
 
 
 def no_reask(asked_by_turn: list[tuple[list[str], list[str]]], notes: list[str]) -> bool:
-    """A field is re-asked if a reply was asked to request it while it was already captured."""
+    """SC-003: a field is re-asked if a reply requested it while it was already captured."""
     for fields, captured in asked_by_turn:
         again = set(fields) & set(captured)
         if again:
@@ -90,6 +93,7 @@ def no_reask(asked_by_turn: list[tuple[list[str], list[str]]], notes: list[str])
 
 
 def message_rules(result: RunResult, lang: str, limits: ConversationSettings) -> bool:
+    """FR-001/002: every bot message (except the code-built summary) obeys the guards."""
     ok = True
     for text in result.bot_messages:
         if "•" in text:  # the code-built summary: exempt from the length rule
@@ -107,6 +111,7 @@ def message_rules(result: RunResult, lang: str, limits: ConversationSettings) ->
 
 
 def no_amount_suggested(result: RunResult, limits: ConversationSettings) -> bool:
+    """SC-003 / FR-006: the bot never introduced a fee or budget amount."""
     for text in result.bot_messages:
         issues = guards.problems(
             text, tutee_texts=result.tutee_messages, language="any", limits=limits
@@ -117,13 +122,16 @@ def no_amount_suggested(result: RunResult, limits: ConversationSettings) -> bool
     return True
 
 
-def score(result: RunResult, scenario: dict, limits: ConversationSettings) -> None:
+def score(
+    result: RunResult, scenario: dict, limits: ConversationSettings, schema: RequirementSchema
+) -> None:
+    """Fill ``result.checks`` for one run; each check maps to a spec criterion."""
     expect = scenario.get("expect", {})
     lang = scenario.get("language", "en")
     result.checks["outcome"] = result.outcome == expect.get("outcome", "lead_recorded")
     if result.checks["outcome"] and result.outcome == "lead_recorded" and result.lead_row:
         result.checks["fields_match (SC-001)"] = lead_matches_facts(
-            result.lead_row, scenario["tutee_facts"], result.notes
+            result.lead_row, scenario["tutee_facts"], schema, result.notes
         )
     result.checks["no_reask (SC-003)"] = no_reask(result.asked_by_turn, result.notes)
     result.checks["no_amount (SC-003)"] = no_amount_suggested(result, limits)
@@ -138,5 +146,6 @@ def score(result: RunResult, scenario: dict, limits: ConversationSettings) -> No
 
 
 def median_bot_messages(results: list[RunResult]) -> float:
+    """SC-002: median number of bot messages in conversations that recorded a lead."""
     counts = [len(r.bot_messages) for r in results if r.outcome == "lead_recorded"]
     return statistics.median(counts) if counts else 0.0

@@ -1,4 +1,9 @@
-"""lead-capture CLI (Typer)."""
+"""lead-capture CLI (Typer).
+
+Why: everything outside WhatsApp — local chats, evals, load tests, cost reports, sheet setup,
+replaying webhooks and running jobs by hand — is one command away, for people, CI and coding
+agents alike (see CLAUDE.md → Commands).
+"""
 
 from __future__ import annotations
 
@@ -16,6 +21,7 @@ app.add_typer(jobs_app, name="jobs")
 
 
 def _todo(name: str) -> None:
+    """Placeholder for commands delivered in later tasks; exits with status 1."""
     typer.echo(f"{name}: not implemented yet")
     raise typer.Exit(code=1)
 
@@ -31,6 +37,7 @@ def _project_root_on_path() -> None:
 
 
 def _services(**over):
+    """Services from settings and environment, with optional overrides."""
     from lead_capture.services import build_services
     from lead_capture.settings import Secrets, get_settings
 
@@ -42,8 +49,10 @@ def chat(
     number: str = "+919999900001",
     sheet: bool = typer.Option(False, help="Write confirmed leads to the real Google Sheet"),
 ) -> None:
-    """Chat with the real engine in the terminal (fake WhatsApp). Type #mode:home to tap a button,
-    /quit to exit."""
+    """Chat with the real engine in the terminal (fake WhatsApp).
+
+    Type ``#<option id>`` (e.g. ``#mode:home``) to tap an option, ``/quit`` to exit.
+    """
     from lead_capture.adapters.channels.fake import FakeChannel
     from lead_capture.adapters.leads.in_memory import InMemoryLeadRepository
     from lead_capture.conversation.engine import Engine
@@ -55,12 +64,15 @@ def chat(
     engine_db = make_engine("sqlite://")
     Base.metadata.create_all(engine_db)
     over = {"channel": FakeChannel(), "sessions": make_session_factory(engine_db)}
-    if not sheet:
-        over["leads"] = InMemoryLeadRepository()
     sv = _services(**over)
+    if not sheet:
+        sv.leads = InMemoryLeadRepository(
+            sv.schema.leads_layout(), sv.schema.handoffs_layout(), timezone=sv.settings.ops.timezone
+        )
     engine = Engine(sv, on_lead_created=lambda: drain_once(sv))
 
     async def loop() -> None:
+        """Read lines from the terminal until /quit and print the bot's replies."""
         n = 0
         while True:
             line = typer.prompt("you", default="", show_default=False)
@@ -86,8 +98,13 @@ def chat(
                 typer.secho(f"(lead rows: {len(sv.leads.leads)})", fg="yellow")
 
     async def handle_inbound_direct(msg: InboundMessage) -> None:
+        """Store the message and run the turn immediately (no queue/debounce in the CLI)."""
+
         class _DirectQueue:
+            """Queue stand-in that runs the turn at once."""
+
             async def put(self, key, item):
+                """Run the turn for ``item`` now."""
                 await engine.run_turn(key, [item])
 
         sv.queue = _DirectQueue()  # type: ignore[assignment]
@@ -126,12 +143,13 @@ def costs(month: str = typer.Option(..., help="YYYY-MM")) -> None:
 def check_sheet() -> None:
     """Check access to the lead sheet and its header contract."""
     from lead_capture import registry
+    from lead_capture.domain.schema import get_schema
     from lead_capture.ports.leads import RepositoryContractError, RepositoryUnavailable
     from lead_capture.settings import Secrets, get_settings
 
     try:
-        registry.build_lead_repository(get_settings(), Secrets()).check_headers()
-    except (RepositoryContractError, RepositoryUnavailable) as exc:
+        registry.build_lead_repository(get_settings(), Secrets(), get_schema()).check_headers()
+    except (RepositoryContractError, RepositoryUnavailable, OSError) as exc:
         typer.secho(f"sheet check failed: {exc}", fg="red")
         raise typer.Exit(code=1) from None
     typer.secho("sheet ok: tabs and headers match the contract", fg="green")
@@ -141,15 +159,16 @@ def check_sheet() -> None:
 def sync_lists(dry_run: bool = False) -> None:
     """Write config/lists.yaml into the sheet's Lists tab."""
     from lead_capture import registry
-    from lead_capture.domain.lists import get_lists
+    from lead_capture.domain.schema import get_schema
     from lead_capture.settings import Secrets, get_settings
 
-    lists = get_lists().for_sheet()
+    schema = get_schema()
+    lists = schema.lists_tab()
     if dry_run:
         for header, values in lists.items():
             typer.echo(f"{header}: {', '.join(values)}")
         return
-    registry.build_lead_repository(get_settings(), Secrets()).sync_lists(lists)
+    registry.build_lead_repository(get_settings(), Secrets(), schema).sync_lists(lists)
     typer.secho("Lists tab updated", fg="green")
 
 

@@ -16,6 +16,7 @@ target_metadata = Base.metadata
 
 
 def run_migrations_offline() -> None:
+    """Emit SQL without a database connection (alembic --sql)."""
     context.configure(
         url=Secrets().database_url,
         target_metadata=target_metadata,
@@ -27,6 +28,7 @@ def run_migrations_offline() -> None:
 
 
 def run_migrations_online() -> None:
+    """Apply migrations to the database named by DATABASE_URL."""
     engine = make_engine(Secrets().database_url)
     with engine.connect() as connection:
         context.configure(

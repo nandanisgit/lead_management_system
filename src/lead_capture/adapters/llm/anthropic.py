@@ -14,7 +14,6 @@ from typing import Any
 import anthropic
 
 from lead_capture.ports.llm import (
-    EXTRACTABLE_FIELDS,
     ExtractionResult,
     Instruction,
     LLMError,
@@ -28,20 +27,6 @@ from lead_capture.settings import ROOT, LLMSettings
 
 log = logging.getLogger(__name__)
 PROMPTS = ROOT / "prompts"
-
-_FIELD_SCHEMA: dict[str, dict[str, Any]] = {
-    name: {"type": "string"} for name in EXTRACTABLE_FIELDS
-} | {
-    "relationship": {"type": "string", "enum": ["parent", "student", "other"]},
-    "subjects": {"type": "array", "items": {"type": "string"}},
-    "mode": {"type": "string", "enum": ["online", "home", "either"]},
-    "start_date": {"type": "string", "description": "ASAP or YYYY-MM-DD"},
-    "budget_min": {"type": "integer"},
-    "budget_max": {"type": "integer"},
-    "budget_unit": {"type": "string", "enum": ["per_hour", "per_month"]},
-    "sessions_per_week": {"type": "integer"},
-    "guardian_relationship": {"type": "string", "enum": ["mother", "father", "guardian", "other"]},
-}
 
 _SIGNAL_SCHEMA: dict[str, dict[str, Any]] = {
     "language": {"type": "string", "enum": ["en", "hi", "other"]},
@@ -74,39 +59,43 @@ _SIGNAL_SCHEMA: dict[str, dict[str, Any]] = {
     },
 }
 
-TOOL: dict[str, Any] = {
-    "name": "record_requirements",
-    "description": (
-        "Record every tutoring requirement detail found in the tutee's latest message(s), plus "
-        "conversation signals. Include only details the tutee actually stated; never infer budget "
-        "or schedule. Omit fields not mentioned."
-    ),
-    "input_schema": {
-        "type": "object",
-        "properties": {
-            "fields": {
-                "type": "object",
-                "properties": _FIELD_SCHEMA,
-                "additionalProperties": False,
+TOOL_NAME = "record_requirements"
+TOOL_DESCRIPTION = (
+    "Record every tutoring requirement detail found in the tutee's latest message(s), plus "
+    "conversation signals. Include only details the tutee actually stated; never infer budget "
+    "or schedule. Omit fields not mentioned. Follow each field's description."
+)
+
+
+def build_tool(fields_schema: dict[str, Any]) -> dict[str, Any]:
+    """The forced extraction tool: fields from config/requirement.yaml, signals from code."""
+    return {
+        "name": TOOL_NAME,
+        "description": TOOL_DESCRIPTION,
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "fields": fields_schema,
+                "signals": {
+                    "type": "object",
+                    "properties": _SIGNAL_SCHEMA,
+                    "required": ["language", "understood"],
+                    "additionalProperties": False,
+                },
             },
-            "signals": {
-                "type": "object",
-                "properties": _SIGNAL_SCHEMA,
-                "required": ["language", "understood"],
-                "additionalProperties": False,
-            },
+            "required": ["fields", "signals"],
         },
-        "required": ["fields", "signals"],
-    },
-}
+    }
 
 
 def _transcript(turn: TurnContext, limit: int) -> str:
+    """The last ``limit`` messages as plain lines (context size is a cost setting)."""
     lines = turn.transcript[-limit:]
     return "\n".join(f"{'Tutee' if ln.role == 'tutee' else 'Assistant'}: {ln.text}" for ln in lines)
 
 
 def _usage(model: str, usage: Any) -> TokenUsage:
+    """Token counts from the API response, for cost tracking."""
     return TokenUsage(
         model=model,
         input_tokens=getattr(usage, "input_tokens", 0) or 0,
@@ -117,20 +106,30 @@ def _usage(model: str, usage: Any) -> TokenUsage:
 
 
 class AnthropicLLMClient:
+    """LLMClient on the Claude API."""
+
     def __init__(
         self,
         settings: LLMSettings,
         api_key: str | None,
         *,
-        max_questions: int = 2,
-        max_words: int = 60,
+        fields_schema: dict[str, Any],
+        max_questions: int,
+        max_words: int,
         client: anthropic.AsyncAnthropic | None = None,
     ) -> None:
+        """Build from settings.
+
+        ``fields_schema`` comes from RequirementSchema; the question/word limits come from
+        conversation settings and fill the system prompt.
+        """
         self._s = settings
         self._client = client or anthropic.AsyncAnthropic(
             api_key=api_key, timeout=settings.timeout_seconds, max_retries=settings.max_retries
         )
         self._sem = asyncio.Semaphore(settings.max_concurrent_calls)
+        self._tool = build_tool(fields_schema)
+        self._known = set(fields_schema["properties"])
         self._extract_system = (PROMPTS / "extraction.md").read_text()
         self._reply_system = (
             (PROMPTS / "assistant.md")
@@ -140,18 +139,21 @@ class AnthropicLLMClient:
         )
 
     def _system(self, text: str) -> list[dict[str, Any]]:
+        """System prompt block, marked for prompt caching when enabled (cost saving)."""
         block: dict[str, Any] = {"type": "text", "text": text}
         if self._s.prompt_cache:
             block["cache_control"] = {"type": "ephemeral"}
         return [block]
 
     def _tools(self) -> list[dict[str, Any]]:
-        tool = dict(TOOL)
+        """The extraction tool, marked for prompt caching when enabled."""
+        tool = dict(self._tool)
         if self._s.prompt_cache:
             tool["cache_control"] = {"type": "ephemeral"}
         return [tool]
 
     async def _call(self, **kwargs: Any) -> Any:
+        """One API call under the concurrency cap, with SDK errors mapped to port errors."""
         async with self._sem:
             try:
                 return await self._client.messages.create(**kwargs)
@@ -161,6 +163,7 @@ class AnthropicLLMClient:
                 raise LLMError(type(exc).__name__) from exc
 
     async def extract(self, turn: TurnContext) -> ExtractionResult:
+        """Forced tool call on the extraction model; unknown fields are dropped."""
         model = self._s.extraction_model
         content = (
             f"Captured so far (validated): {json.dumps(turn.state, ensure_ascii=False)}\n"
@@ -173,7 +176,7 @@ class AnthropicLLMClient:
             max_tokens=self._s.max_output_tokens.extraction,
             system=self._system(self._extract_system),
             tools=self._tools(),
-            tool_choice={"type": "tool", "name": TOOL["name"]},
+            tool_choice={"type": "tool", "name": TOOL_NAME},
             messages=[{"role": "user", "content": content}],
         )
         payload: dict[str, Any] = {}
@@ -188,9 +191,10 @@ class AnthropicLLMClient:
         result = ExtractionResult(
             fields=payload.get("fields") or {}, signals=signals, usage=_usage(model, resp.usage)
         )
-        return result.only_known_fields()
+        return result.only_known_fields(self._known)
 
     async def write_reply(self, turn: TurnContext, instruction: Instruction) -> ReplyResult:
+        """Plain-text reply from the reply model, following the engine's instruction."""
         model = self._s.reply_model
         language = "Hindi/Hinglish (Roman script)" if turn.language == "hi" else "English"
         content = (

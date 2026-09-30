@@ -46,11 +46,25 @@ async def test_full_conversation_records_one_new_lead(session_factory):
     [close] = await h.say(choice="confirm:yes")
     assert "today" in close.text
     [row] = h.leads_rows()
-    assert row[0].startswith("L-20260929-") and row[25] == "NEW"
-    assert row[3:10] == ["Priya", "parent", "Aarav", "Class 8", "CBSE", "Maths", "home"]
-    assert row[10:12] == ["Dwarka Sector 12", "Delhi"]
-    assert (row[15], row[16], row[17]) == (600, 600, "per hour")
-    assert row[2] == "'+919999900001"
+    expected = {
+        "Status": "NEW",
+        "Contact Name": "Priya",
+        "Relationship": "parent",
+        "Student Name": "Aarav",
+        "Class / Level": "Class 8",
+        "Board": "CBSE",
+        "Subjects": "Maths",
+        "Mode": "home",
+        "Area": "Dwarka Sector 12",
+        "City": "Delhi",
+        "Budget Min (₹)": 600,
+        "Budget Max (₹)": 600,
+        "Budget Unit": "per hour",
+        "WhatsApp Number": "'+919999900001",
+        "Language": "English",
+    }
+    assert {k: h.cell(row, k) for k in expected} == expected
+    assert h.cell(row, "Lead ID").startswith("L-20260929-")
 
 
 @pytest.mark.parametrize(

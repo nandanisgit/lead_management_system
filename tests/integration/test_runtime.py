@@ -3,11 +3,11 @@ import time
 from fastapi.testclient import TestClient
 
 from lead_capture.adapters.channels.fake import FakeChannel
-from lead_capture.adapters.leads.in_memory import InMemoryLeadRepository
 from lead_capture.adapters.llm.fake import FakeLLMClient
 from lead_capture.runtime import create_runtime_app
 from lead_capture.services import build_services
 from lead_capture.settings import load_settings
+from tests.conftest import memory_repo
 
 
 def test_webhook_to_reply_through_the_running_app(session_factory):
@@ -15,7 +15,7 @@ def test_webhook_to_reply_through_the_running_app(session_factory):
         load_settings(conversation={"debounce_ms": 0}),
         llm=FakeLLMClient(),
         channel=FakeChannel(),
-        leads=InMemoryLeadRepository(),
+        leads=memory_repo(),
         sessions=session_factory,
     )
     with TestClient(create_runtime_app(services)) as client:

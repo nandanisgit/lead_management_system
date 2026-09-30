@@ -12,6 +12,11 @@ log = logging.getLogger(__name__)
 
 
 async def handle_inbound(services: Services, messages: list[InboundMessage]) -> None:
+    """Store each inbound message once (dedupe on message ID) and queue a turn.
+
+    Echoes from the Business app are stored for the transcript but never queued, so the
+    bot stays silent while a human is replying. Must return fast: the webhook waits on it.
+    """
     for m in messages:
         with services.sessions() as db:
             contact = queries.get_or_create_contact(db, m.contact, m.profile_name)

@@ -19,15 +19,27 @@ def test_wa_message_id_unique(session_factory):
 def test_one_active_conversation_per_contact_and_student(session_factory):
     with session_factory() as s:
         c = queries.get_or_create_contact(s, "+919999900001")
-        s.add(Conversation(contact_id=c.id, state="in_progress", student_key="aarav"))
+        s.add(
+            Conversation(
+                contact_id=c.id, state="in_progress", student_key="aarav", source="organic"
+            )
+        )
         s.commit()
-        s.add(Conversation(contact_id=c.id, state="in_progress", student_key="aarav"))
+        s.add(
+            Conversation(
+                contact_id=c.id, state="in_progress", student_key="aarav", source="organic"
+            )
+        )
         with pytest.raises(IntegrityError):
             s.commit()
         s.rollback()
         # a completed one for the same student is fine, and another student is fine
-        s.add(Conversation(contact_id=c.id, state="completed", student_key="aarav"))
-        s.add(Conversation(contact_id=c.id, state="in_progress", student_key="riya"))
+        s.add(
+            Conversation(contact_id=c.id, state="completed", student_key="aarav", source="organic")
+        )
+        s.add(
+            Conversation(contact_id=c.id, state="in_progress", student_key="riya", source="organic")
+        )
         s.commit()
 
 

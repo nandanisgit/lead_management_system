@@ -21,6 +21,7 @@ InboundHandler = Callable[[Services, list[InboundMessage]], Awaitable[None]]
 
 
 async def _noop_inbound(services: Services, messages: list[InboundMessage]) -> None:
+    """Default inbound handler for tests of the HTTP layer alone: log and drop."""
     log.info("inbound_ignored", extra={"count": len(messages)})
 
 
@@ -31,10 +32,16 @@ def create_app(
     on_start: Callable[[], Awaitable[None]] | None = None,
     on_stop: Callable[[], Awaitable[None]] | None = None,
 ) -> FastAPI:
+    """The FastAPI app: webhook routes per channel and a health check.
+
+    Business logic is injected (``inbound_handler``, ``on_start``/``on_stop``) so the app
+    can be tested with fakes and wired for production in ``runtime.py``.
+    """
     handler = inbound_handler or _noop_inbound
 
     @asynccontextmanager
     async def lifespan(_: FastAPI) -> AsyncIterator[None]:
+        """Check the sheet layout, then start background work; stop it on shutdown."""
         if check_sheet:
             try:
                 services.leads.check_headers()
@@ -51,14 +58,14 @@ def create_app(
     app.state.services = services
 
     def _channel(name: str):
-        if name != services.channel.name and not (
-            name == "whatsapp" and services.channel.name == "whatsapp_cloud"
-        ):
+        """The configured channel if this path is its webhook, else 404."""
+        if name != services.channel.path_name:
             raise HTTPException(status_code=404)
         return services.channel
 
     @app.get("/webhooks/{channel_name}")
     async def verify(channel_name: str, request: Request) -> Response:
+        """Webhook subscription handshake (GET)."""
         challenge = _channel(channel_name).verify_subscription(dict(request.query_params))
         if challenge is None:
             raise HTTPException(status_code=403)
@@ -66,6 +73,7 @@ def create_app(
 
     @app.post("/webhooks/{channel_name}")
     async def receive(channel_name: str, request: Request) -> Response:
+        """Webhook events (POST): verify, store, queue, and answer 200 fast."""
         channel = _channel(channel_name)
         body = await request.body()
         try:
@@ -77,6 +85,7 @@ def create_app(
 
     @app.get("/healthz")
     async def healthz() -> dict:
+        """Liveness and outbox backlog for monitoring — no personal data."""
         db_ok = "ok"
         pending = 0
         try:

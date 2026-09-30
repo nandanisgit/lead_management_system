@@ -15,6 +15,11 @@ values are dropped and trigger a clarifying question.
 
 ## Tool definition
 
+The `fields` part is **generated from `config/requirement.yaml`**
+(`RequirementSchema.llm_fields_schema()`: one property per field, type from the field type,
+`enum` when `llm.enum` is set, description from `llm.description`). The JSON below shows
+the v1 result; the `signals` part is fixed in code because it drives engine behaviour.
+
 ```json
 {
   "name": "record_requirements",

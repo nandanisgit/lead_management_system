@@ -1,39 +1,21 @@
-"""LLMClient port — the only way the engine reaches a language model (research R16)."""
+"""LLMClient port — the only way the engine reaches a language model (research R16).
+
+Why: the model vendor can change (another Claude route, another provider) without touching
+the engine. Field names are not listed here: the fields the model may propose come from
+config/requirement.yaml and are handed to adapters when they are built.
+"""
 
 from __future__ import annotations
 
+from collections.abc import Collection
 from typing import Any, Literal, Protocol, runtime_checkable
 
 from pydantic import BaseModel, Field
 
-# Field names the extraction may propose (contracts/llm-extraction.md). Anything else is dropped.
-EXTRACTABLE_FIELDS: tuple[str, ...] = (
-    "contact_name",
-    "relationship",
-    "student_name",
-    "grade_level",
-    "board",
-    "subjects",
-    "mode",
-    "area",
-    "city",
-    "pincode",
-    "schedule",
-    "start_date",
-    "budget_min",
-    "budget_max",
-    "budget_unit",
-    "goal",
-    "sessions_per_week",
-    "tutor_preferences",
-    "level_notes",
-    "email",
-    "guardian_name",
-    "guardian_relationship",
-)
-
 
 class TokenUsage(BaseModel):
+    """Tokens used by one model call — recorded per conversation for cost tracking (R15)."""
+
     model: str
     input_tokens: int = 0
     output_tokens: int = 0
@@ -42,6 +24,12 @@ class TokenUsage(BaseModel):
 
 
 class Signals(BaseModel):
+    """Conversation signals the model reports alongside extracted fields.
+
+    These drive engine behaviour (consent, handoff, off-topic, minors…), so they are part of
+    the code contract rather than config.
+    """
+
     language: Literal["en", "hi", "other"] = "en"
     consent: Literal["given", "declined", "none"] = "none"
     confirms_summary: bool | None = None
@@ -58,16 +46,21 @@ class Signals(BaseModel):
 
 
 class ExtractionResult(BaseModel):
+    """What the model proposes for one turn. A proposal only — the engine validates it."""
+
     fields: dict[str, Any] = Field(default_factory=dict)
     signals: Signals = Field(default_factory=Signals)
     usage: TokenUsage | None = None
 
-    def only_known_fields(self) -> ExtractionResult:
-        known = {k: v for k, v in self.fields.items() if k in EXTRACTABLE_FIELDS and v is not None}
+    def only_known_fields(self, allowed: Collection[str]) -> ExtractionResult:
+        """Drop fields the schema doesn't define (and empty values) before validation."""
+        known = {k: v for k, v in self.fields.items() if k in allowed and v is not None}
         return self.model_copy(update={"fields": known})
 
 
 class TranscriptLine(BaseModel):
+    """One message of the recent transcript given to the model."""
+
     role: Literal["tutee", "assistant"]
     text: str
 
@@ -91,6 +84,8 @@ class Instruction(BaseModel):
 
 
 class ReplyResult(BaseModel):
+    """A model-written reply (checked by the guards before sending)."""
+
     text: str
     usage: TokenUsage | None = None
 
@@ -105,6 +100,12 @@ class LLMTimeout(LLMError):
 
 @runtime_checkable
 class LLMClient(Protocol):
-    async def extract(self, turn: TurnContext) -> ExtractionResult: ...
+    """A language model as the engine needs it: extraction and reply phrasing."""
 
-    async def write_reply(self, turn: TurnContext, instruction: Instruction) -> ReplyResult: ...
+    async def extract(self, turn: TurnContext) -> ExtractionResult:
+        """Propose field values and signals from the recent conversation."""
+        ...
+
+    async def write_reply(self, turn: TurnContext, instruction: Instruction) -> ReplyResult:
+        """Phrase the reply the engine decided on (``instruction``) — nothing more."""
+        ...

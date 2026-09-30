@@ -1,5 +1,10 @@
 # Contract: Operational Lead Register (Google Sheet)
 
+> **Source of truth:** the tab names, headers, column order, which columns the bot owns,
+> the time format and the ID prefixes are defined in `config/requirement.yaml` → `sheet:`
+> and reach adapters as `SheetLayout`. The tables below document the v1 configuration; if
+> they disagree with the config, the config wins.
+
 A native Google Sheet on a shared Drive. The service account has **editor
 access to this one file only**. Sheet ID comes from `LEAD_SHEET_ID`.
 
@@ -68,7 +73,8 @@ Columns AA–AC are never written by the bot.
 ## Tab `Lists`
 
 One column per list (Class / Level, Board, Subjects, City, Mode, Budget Unit,
-Status). Written by the `sync-lists` command from `config/lists.yaml`; used as
+Status). Written by the `sync-lists` command from `config/requirement.yaml`
+(`sheet.lists_tab`); used as
 data-validation ranges for dropdowns in `Leads`.
 
 ## `LeadRepository` interface
@@ -79,11 +85,11 @@ Principle II). Implementations: `GoogleSheetLeadRepository`,
 
 | Method | Behaviour |
 |---|---|
-| `append_lead(row: LeadRow) -> None` | idempotent append of columns A–Z |
+| `append_lead(row: SheetRow) -> None` | idempotent append of the bot-owned columns |
 | `exists(lead_id: str) -> bool` | Lead ID present in column A |
 | `delete_lead(lead_id: str) -> bool` | delete the row if present |
 | `delete_leads_created_before(cutoff: datetime) -> int` | retention |
-| `append_handoff(row: HandoffRow) -> None` | append to `Handoffs` |
+| `append_handoff(row: SheetRow) -> None` | append to `Handoffs` |
 | `resolved_handoffs() -> list[str]` | Handoff IDs marked `Resolved` (column I) |
 | `update_handoff_reply_by(handoff_id, reply_by)` | rewrite column H only, when the tutee writes again during a handoff |
 | `delete_handoffs_before(cutoff: datetime) -> int` | retention |

@@ -95,7 +95,10 @@ Cost tracking (research R15). IDs and counts only — no personal data.
 ## Value object: Requirement
 
 The validated requirement stored in `Conversation.collected` and copied into a
-lead. Enforced by a Pydantic model; allowed values come from `config/lists.yaml`.
+lead. **Defined only in `config/requirement.yaml`** (constitution Principle VII): the
+table below documents the v1 configuration; `Requirement.apply` enforces whatever the
+config says, and adding a field needs no code change (docs/coding-guidelines.md §1).
+Stored in `Conversation.collected` as `{"values": {...}, "out_of_area": bool}`.
 
 | Field | Required | Validation |
 |---|---|---|
@@ -121,7 +124,7 @@ lead. Enforced by a Pydantic model; allowed values come from `config/lists.yaml`
 | `guardian_name` | if `minor_alone` | 1–60 chars (FR-029) |
 | `guardian_relationship` | if `minor_alone` | `mother` / `father` / `guardian` / `other` |
 
-**Missing-field order** (what the bot asks next, grouped naturally):
+**Missing-field order** (`ask_groups:` in config; what the bot asks next, grouped naturally):
 consent → contact_name & relationship → student_name → grade_level & board →
 subjects → mode → area & city → schedule → start_date → budget → guardian_name &
 guardian_relationship (only if `minor_alone`) → (optional fields if the
@@ -156,7 +159,7 @@ any active state ──not interested / out of area declined / STOP──► clo
 |---|---|---|---|
 | `Leads` | confirmed lead | bot appends A–Z; ops owns Z updates and AA–AC | [lead-sheet.md](contracts/lead-sheet.md) |
 | `Handoffs` | handoff event | bot appends A–H and updates H (reply-by time); ops sets I (`Resolved`) | [lead-sheet.md](contracts/lead-sheet.md) |
-| `Lists` | allowed value | CLI `sync-lists` from `config/lists.yaml` | [lead-sheet.md](contracts/lead-sheet.md) |
+| `Lists` | allowed value | CLI `sync-lists` from `config/requirement.yaml` (`sheet.lists_tab`) | [lead-sheet.md](contracts/lead-sheet.md) |
 
 ## Retention
 

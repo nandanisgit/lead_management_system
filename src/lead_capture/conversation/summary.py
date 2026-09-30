@@ -1,44 +1,46 @@
-"""Summary shown to the tutee and the LeadRow written to the sheet — both built from validated
-values only (constitution Principle II)."""
+"""The summary the tutee confirms and the lead row written to the sheet.
+
+Why: both must show exactly the validated values (constitution Principle II), so they are
+built by code — never by the model — from the layouts in config/requirement.yaml
+(``summary:`` and ``sheet.leads``). Adding a field there adds it here automatically.
+"""
 
 from __future__ import annotations
 
-from datetime import datetime
+from typing import Any
 
 from lead_capture.conversation import fixed_texts as ft
-from lead_capture.domain.hours import format_ist
-from lead_capture.domain.requirement import RequirementState
-from lead_capture.ports.leads import LeadRow
-
-_UNIT = {"per_hour": "per hour", "per_month": "per month"}
-_MODE = {
-    "en": {"online": "Online", "home": "Home tuition", "either": "Online or home"},
-    "hi": {"online": "Online", "home": "Ghar par tuition", "either": "Online ya ghar par"},
-}
+from lead_capture.domain.requirement import Requirement
+from lead_capture.domain.schema import RequirementSchema
+from lead_capture.domain.templates import render
 
 
-def _budget(s: RequirementState) -> str:
-    unit = _UNIT.get(s.budget_unit or "", "")
-    if s.budget_min == s.budget_max:
-        return f"₹{s.budget_min} {unit}".strip()
-    return f"₹{s.budget_min}–{s.budget_max} {unit}".strip()
+def display_context(schema: RequirementSchema, req: Requirement, context: str) -> dict[str, Any]:
+    """Every field's value as people see it in ``context`` ("en", "hi" or "sheet")."""
+    return {name: schema.display(name, req.get(name), context) for name in schema.fields}
 
 
-def summary_text(s: RequirementState, lang: str, minor_alone: bool) -> str:
-    board = f" {s.board}" if s.board and s.board != "N/A" else ""
-    mode = _MODE.get(lang, _MODE["en"]).get(s.mode or "", s.mode or "")
-    where = f" — {s.area}, {s.city}" if s.mode != "online" and s.area and s.city else ""
-    start = "ASAP" if s.start_date == "ASAP" else s.start_date
-    lines = [
-        ft.text("SUMMARY_LEAD_IN", lang),
-        f"• {s.student_name}, {s.grade_level}{board}",
-        f"• {', '.join(s.subjects)}",
-        f"• {mode}{where}",
-        f"• {s.schedule}; start {start}",
-        f"• Budget {_budget(s)}",
-    ]
-    if minor_alone and s.guardian_name:
-        lines.append(f"• Parent/guardian: {s.guardian_name} ({s.guardian_relationship})")
+def _derived(schema: RequirementSchema, req: Requirement, lang: str) -> dict[str, str]:
+    """Placeholders built from several fields, e.g. the budget "₹500–800 per month"."""
+    out: dict[str, str] = {}
+    for key, spec in schema.summary.derived.items():
+        low, high = req.get(spec.min), req.get(spec.max)
+        if low is None:
+            continue
+        unit = schema.display(spec.unit, req.get(spec.unit), lang)
+        template = spec.same if high in (None, low) else spec.range
+        out[key] = render(template, {"min": low, "max": high, "unit": unit}).strip()
+    return out
+
+
+def summary_text(schema: RequirementSchema, req: Requirement, lang: str, minor_alone: bool) -> str:
+    """Confirmation summary (FR-013) in the tutee's language, with the confirm question."""
+    ctx = display_context(schema, req, lang) | _derived(schema, req, lang)
+    lines = [ft.text("SUMMARY_LEAD_IN", lang)]
+    for template in schema.summary.lines.get(lang) or schema.summary.lines["en"]:
+        line = render(template, ctx).rstrip()
+        if line.strip(" •"):
+            lines.append(line)
     lines.append("")
     if minor_alone:
         lines.append(ft.text("SUMMARY_MINOR", lang))
@@ -46,55 +48,31 @@ def summary_text(s: RequirementState, lang: str, minor_alone: bool) -> str:
     return "\n".join(lines)
 
 
-def minor_marker(s: RequirementState) -> str:
-    return (
-        f"MINOR – consent given by student – contact parent/guardian: "
-        f"{s.guardian_name} ({s.guardian_relationship})"
-    )
+def lead_values(
+    schema: RequirementSchema, req: Requirement, meta: dict[str, Any], minor_alone: bool
+) -> list[Any]:
+    """Values for the bot-owned columns of the Leads tab, in configured column order.
 
-
-def lead_row(
-    *,
-    lead_id: str,
-    now: datetime,
-    timezone: str,
-    wa_number: str,
-    consent_at: datetime,
-    language: str,
-    source: str,
-    state: RequirementState,
-    minor_alone: bool,
-) -> LeadRow:
-    notes = [minor_marker(state)] if minor_alone else []
-    if state.level_notes:
-        notes.append(state.level_notes)
-    if state.email:
-        notes.append(f"Email: {state.email}")
-    online = state.mode == "online"
-    return LeadRow(
-        lead_id=lead_id,
-        created_at=format_ist(now, timezone),
-        whatsapp_number=wa_number,
-        contact_name=state.contact_name or "",
-        relationship=state.relationship or "",
-        student_name=state.student_name or "",
-        grade_level=state.grade_level or "",
-        board=state.board or "",
-        subjects=", ".join(state.subjects),
-        mode=state.mode or "",
-        area="" if online else (state.area or ""),
-        city="" if online else (state.city or ""),
-        pincode=state.pincode or "",
-        schedule=state.schedule or "",
-        start_date=state.start_date or "",
-        budget_min=state.budget_min or 0,
-        budget_max=state.budget_max or 0,
-        budget_unit=_UNIT.get(state.budget_unit or "", ""),
-        goal=state.goal or "",
-        sessions_per_week=str(state.sessions_per_week or ""),
-        tutor_preferences=state.tutor_preferences or "",
-        notes=" | ".join(notes),
-        language="Hindi" if language == "hi" else "English",
-        source=source,
-        consent_at=format_ist(consent_at, timezone),
-    )
+    ``meta`` carries non-field values (lead_id, created_at, whatsapp_number, language,
+    source, consent_at). Status comes from config; the minor marker only for FR-029 leads.
+    """
+    sheet = schema.sheet
+    fields = display_context(schema, req, "sheet")
+    meta = {
+        **meta,
+        "status": sheet.initial_status,
+        "language": sheet.language_labels.get(meta.get("language", ""), meta.get("language")),
+        "minor_marker": render(sheet.minor_marker, fields) if minor_alone else "",
+    }
+    ctx = fields | meta
+    row: list[Any] = []
+    for col in sheet.leads.columns:
+        if col.owner == "ops":
+            break
+        if col.value:
+            kind, _, name = col.value.partition(".")
+            row.append(fields[name] if kind == "field" else meta.get(name, ""))
+        else:
+            parts = [render(p, ctx).strip() for p in col.parts or []]
+            row.append(col.separator.join(p for p in parts if p))
+    return row

@@ -17,11 +17,11 @@ def s():
     )
 
 
-def test_builds_adapters_named_in_settings(s):
+def test_builds_adapters_named_in_settings(s, schema):
     sec = Secrets()
-    assert isinstance(registry.build_llm(s, sec), FakeLLMClient)
+    assert isinstance(registry.build_llm(s, sec, schema), FakeLLMClient)
     assert isinstance(registry.build_channel(s, sec), FakeChannel)
-    assert isinstance(registry.build_lead_repository(s, sec), InMemoryLeadRepository)
+    assert isinstance(registry.build_lead_repository(s, sec, schema), InMemoryLeadRepository)
     assert isinstance(registry.build_queue(s), InProcessTurnQueue)
     assert isinstance(registry.build_lock(s), InMemoryConversationLock)
     assert isinstance(registry.build_clock(s), SystemClock)

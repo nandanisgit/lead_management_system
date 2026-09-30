@@ -5,9 +5,7 @@ Rules:
 - Record only details the tutee actually stated. Never guess, never infer a budget, schedule
   or location. Omit anything not mentioned.
 - Use the tutee's latest statement if they changed something.
-- Normalise where obvious: class as "Class 9", board as CBSE/ICSE/State/IB/IGCSE, subjects as
-  separate items, budget as whole rupees with unit per_hour or per_month, start_date as ASAP or
-  YYYY-MM-DD.
+- Follow each field's description in the tool for the expected form of the value.
 - Messages may be in English, Hindi or Hinglish; set signals.language to "en" or "hi"
   (Hinglish counts as "hi"), or "other" for any other language.
 - Set signals only when the tutee clearly expresses them. "understood" is false only when you

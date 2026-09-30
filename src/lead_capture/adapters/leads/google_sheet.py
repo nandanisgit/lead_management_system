@@ -1,7 +1,10 @@
 """GoogleSheetLeadRepository — LeadRepository over the Google Sheets REST API v4.
 
-Contract: specs/001-whatsapp-lead-capture/contracts/lead-sheet.md. Appends columns A–Z only;
-never writes AA–AC. Transient failures raise RepositoryUnavailable (the outbox retries).
+Why: the operations team works in a Google Sheet (intent §9). This adapter is the only code
+that talks to Google. Tab names, headers, which columns the bot owns and the time format all
+come from config/requirement.yaml (``sheet:``) through ``SheetLayout``; it writes only the
+bot-owned columns and never the operations columns. Transient failures raise
+RepositoryUnavailable so the outbox retries (contracts/lead-sheet.md).
 """
 
 from __future__ import annotations
@@ -15,29 +18,31 @@ from zoneinfo import ZoneInfo
 import httpx
 
 from lead_capture.ports.leads import (
-    HANDOFF_HEADERS,
-    LEAD_HEADERS,
-    HandoffRow,
-    LeadRow,
     RepositoryContractError,
     RepositoryUnavailable,
+    SheetLayout,
+    SheetRow,
+    column_letter,
 )
 from lead_capture.settings import Secrets
 
 log = logging.getLogger(__name__)
 API = "https://sheets.googleapis.com/v4/spreadsheets"
 SCOPES = ["https://www.googleapis.com/auth/spreadsheets"]
-LEADS, HANDOFFS, LISTS = "Leads", "Handoffs", "Lists"
-TIME_FMT = "%Y-%m-%d %H:%M"
 
 
 def service_account_token_provider(path: str) -> Callable[[], str]:
+    """Access-token callable for a service-account key file (refreshes when expired).
+
+    Why: the service account is shared on this one sheet only (least privilege, R5).
+    """
     from google.auth.transport.requests import Request
     from google.oauth2 import service_account
 
     creds = service_account.Credentials.from_service_account_file(path, scopes=SCOPES)
 
     def token() -> str:
+        """A valid access token, refreshed when it has expired."""
         if not creds.valid:
             creds.refresh(Request())
         return creds.token
@@ -46,34 +51,59 @@ def service_account_token_provider(path: str) -> Callable[[], str]:
 
 
 class GoogleSheetLeadRepository:
+    """LeadRepository on a native Google Sheet."""
+
     def __init__(
         self,
         sheet_id: str,
         token_provider: Callable[[], str],
         *,
-        timezone: str = "Asia/Kolkata",
+        leads: SheetLayout,
+        handoffs: SheetLayout,
+        lists_tab: str,
+        timezone: str,
+        timeout_seconds: float,
         client: httpx.Client | None = None,
     ) -> None:
+        """Build for one sheet; layouts and the Lists tab name come from the schema."""
         if not sheet_id:
             raise RepositoryContractError("LEAD_SHEET_ID not configured")
         self._base = f"{API}/{sheet_id}"
         self._token = token_provider
-        self._client = client or httpx.Client(timeout=15)
+        self._client = client or httpx.Client(timeout=timeout_seconds)
         self._tz = ZoneInfo(timezone)
+        self._leads = leads
+        self._handoffs = handoffs
+        self._lists_tab = lists_tab
         self._sheet_ids: dict[str, int] | None = None
 
     @classmethod
-    def from_secrets(cls, secrets: Secrets, timezone: str) -> GoogleSheetLeadRepository:
+    def from_config(
+        cls,
+        secrets: Secrets,
+        *,
+        leads: SheetLayout,
+        handoffs: SheetLayout,
+        lists_tab: str,
+        timezone: str,
+        timeout_seconds: float,
+    ) -> GoogleSheetLeadRepository:
+        """Build from secrets (sheet ID, service-account file) and configured layouts."""
         if not secrets.google_service_account_file:
             raise RepositoryContractError("GOOGLE_SERVICE_ACCOUNT_FILE not configured")
         return cls(
             secrets.lead_sheet_id or "",
             service_account_token_provider(secrets.google_service_account_file),
+            leads=leads,
+            handoffs=handoffs,
+            lists_tab=lists_tab,
             timezone=timezone,
+            timeout_seconds=timeout_seconds,
         )
 
     # --- HTTP -----------------------------------------------------------------
     def _request(self, method: str, path: str, **kwargs) -> dict:
+        """One API call; 429/5xx/network → RepositoryUnavailable, other 4xx → contract error."""
         try:
             resp = self._client.request(
                 method,
@@ -90,9 +120,11 @@ class GoogleSheetLeadRepository:
         return resp.json() if resp.content else {}
 
     def _get(self, rng: str) -> list[list]:
+        """Cell values of an A1 range."""
         return self._request("GET", f"/values/{quote(rng, safe='')}").get("values", [])
 
     def _append(self, rng: str, row: list) -> None:
+        """Append one row below the table (INSERT_ROWS keeps ops edits intact)."""
         self._request(
             "POST",
             f"/values/{quote(rng, safe='')}:append",
@@ -101,6 +133,7 @@ class GoogleSheetLeadRepository:
         )
 
     def _put(self, rng: str, rows: list[list]) -> None:
+        """Overwrite an A1 range."""
         self._request(
             "PUT",
             f"/values/{quote(rng, safe='')}",
@@ -109,6 +142,7 @@ class GoogleSheetLeadRepository:
         )
 
     def _sheet_id(self, title: str) -> int:
+        """Numeric tab ID (needed to delete rows); fetched once."""
         if self._sheet_ids is None:
             meta = self._request("GET", "", params={"fields": "sheets.properties(sheetId,title)"})
             self._sheet_ids = {
@@ -119,7 +153,7 @@ class GoogleSheetLeadRepository:
         return self._sheet_ids[title]
 
     def _delete_rows(self, title: str, indexes: list[int]) -> None:
-        """Delete 0-based row indexes (descending so indexes stay valid)."""
+        """Delete 0-based row indexes (from the bottom up, so indexes stay valid)."""
         if not indexes:
             return
         sheet_id = self._sheet_id(title)
@@ -138,92 +172,94 @@ class GoogleSheetLeadRepository:
         ]
         self._request("POST", ":batchUpdate", json={"requests": requests})
 
-    def _parse(self, text: str) -> datetime | None:
-        try:
-            return datetime.strptime(str(text), TIME_FMT).replace(tzinfo=self._tz)
-        except ValueError:
-            return None
+    def _column(self, layout: SheetLayout, index: int) -> list[str]:
+        """One whole column (header included) as strings."""
+        letter = column_letter(index)
+        return [r[0] if r else "" for r in self._get(f"{layout.tab}!{letter}:{letter}")]
+
+    def _rows_created_before(self, layout: SheetLayout, cutoff: datetime) -> list[int]:
+        """Row indexes (excluding the header) whose created cell is before ``cutoff``."""
+        out = []
+        for i, value in enumerate(self._column(layout, layout.created_index)):
+            if i == 0:
+                continue
+            try:
+                created = datetime.strptime(value, layout.time_format).replace(tzinfo=self._tz)
+            except ValueError:
+                continue
+            if created < cutoff:
+                out.append(i)
+        return out
 
     # --- contract -------------------------------------------------------------
     def check_headers(self) -> None:
-        leads = (self._get(f"{LEADS}!1:1") or [[]])[0]
-        handoffs = (self._get(f"{HANDOFFS}!1:1") or [[]])[0]
-        if tuple(leads) != LEAD_HEADERS or tuple(handoffs) != HANDOFF_HEADERS:
-            log.error("sheet_header_mismatch")
-            raise RepositoryContractError("sheet_header_mismatch")
-
-    def _lead_ids(self) -> list[str]:
-        return [r[0] if r else "" for r in self._get(f"{LEADS}!A:A")]
+        """Refuse to write if the sheet's header rows differ from the configured layouts."""
+        for layout in (self._leads, self._handoffs):
+            actual = (self._get(f"{layout.tab}!1:1") or [[]])[0]
+            if tuple(actual) != layout.headers:
+                log.error("sheet_header_mismatch", extra={"tab": layout.tab})
+                raise RepositoryContractError("sheet_header_mismatch")
 
     def exists(self, lead_id: str) -> bool:
-        return lead_id in self._lead_ids()[1:]
+        """Lead ID present in the key column."""
+        return lead_id in self._column(self._leads, self._leads.key_index)[1:]
 
-    def append_lead(self, row: LeadRow) -> None:
-        if self.exists(row.lead_id):
-            return
-        self._append(f"{LEADS}!A:Z", row.to_values())
+    def append_lead(self, row: SheetRow) -> None:
+        """Append the bot-owned columns of a lead unless its ID already exists."""
+        if not self.exists(row.key(self._leads)):
+            self._append(self._leads.bot_range, row.guarded()[: self._leads.bot_columns])
 
     def delete_lead(self, lead_id: str) -> bool:
-        ids = self._lead_ids()
-        idx = [i for i, v in enumerate(ids) if i > 0 and v == lead_id]
-        self._delete_rows(LEADS, idx)
+        """Delete the row(s) with this Lead ID."""
+        keys = self._column(self._leads, self._leads.key_index)
+        idx = [i for i, v in enumerate(keys) if i > 0 and v == lead_id]
+        self._delete_rows(self._leads.tab, idx)
         return bool(idx)
 
     def delete_leads_created_before(self, cutoff: datetime) -> int:
-        rows = self._get(f"{LEADS}!A:B")
-        idx = []
-        for i, r in enumerate(rows):
-            if i == 0 or len(r) < 2:
-                continue
-            created = self._parse(r[1])
-            if created and created < cutoff:
-                idx.append(i)
-        self._delete_rows(LEADS, idx)
+        """Retention: delete leads created before ``cutoff``."""
+        idx = self._rows_created_before(self._leads, cutoff)
+        self._delete_rows(self._leads.tab, idx)
         return len(idx)
 
-    def append_handoff(self, row: HandoffRow) -> None:
-        ids = [r[0] for r in self._get(f"{HANDOFFS}!A:A")[1:] if r]
-        if row.handoff_id in ids:
-            return
-        self._append(f"{HANDOFFS}!A:H", row.to_values())
+    def append_handoff(self, row: SheetRow) -> None:
+        """Append a handoff unless its ID already exists."""
+        keys = self._column(self._handoffs, self._handoffs.key_index)[1:]
+        if row.key(self._handoffs) not in keys:
+            self._append(self._handoffs.bot_range, row.guarded()[: self._handoffs.bot_columns])
 
     def update_handoff_reply_by(self, handoff_id: str, reply_by: str) -> None:
-        for i, r in enumerate(self._get(f"{HANDOFFS}!A:A")):
-            if i > 0 and r and r[0] == handoff_id:
-                self._put(f"{HANDOFFS}!H{i + 1}", [[reply_by]])
+        """Rewrite only the reply-by cell of the handoff row."""
+        layout = self._handoffs
+        for i, key in enumerate(self._column(layout, layout.key_index)):
+            if i > 0 and key == handoff_id:
+                cell = f"{layout.tab}!{column_letter(layout.reply_by_index)}{i + 1}"
+                self._put(cell, [[reply_by]])
                 return
 
     def resolved_handoffs(self) -> list[str]:
+        """Handoff IDs whose resolved cell holds the configured resolved value."""
+        layout = self._handoffs
+        want = (layout.resolved_value or "").strip().lower()
         out = []
-        for i, r in enumerate(self._get(f"{HANDOFFS}!A:I")):
-            if i > 0 and len(r) >= 9 and str(r[8]).strip().lower() == "resolved":
-                out.append(r[0])
+        for i, r in enumerate(self._get(layout.full_range)):
+            resolved = len(r) > layout.resolved_index and r[layout.resolved_index]
+            if i > 0 and str(resolved or "").strip().lower() == want:
+                out.append(r[layout.key_index])
         return out
 
     def delete_handoffs_before(self, cutoff: datetime) -> int:
-        idx = []
-        for i, r in enumerate(self._get(f"{HANDOFFS}!A:B")):
-            if i == 0 or len(r) < 2:
-                continue
-            at = self._parse(r[1])
-            if at and at < cutoff:
-                idx.append(i)
-        self._delete_rows(HANDOFFS, idx)
+        """Retention for handoff rows."""
+        idx = self._rows_created_before(self._handoffs, cutoff)
+        self._delete_rows(self._handoffs.tab, idx)
         return len(idx)
 
     def sync_lists(self, lists: dict[str, list[str]]) -> None:
+        """Clear and rewrite the Lists tab: one column per list, header in row 1."""
         headers = list(lists)
         depth = max((len(v) for v in lists.values()), default=0)
         rows = [headers] + [
             [lists[h][i] if i < len(lists[h]) else "" for h in headers] for i in range(depth)
         ]
-        self._request("POST", f"/values/{quote(LISTS + '!A:Z', safe='')}:clear")
-        self._put(f"{LISTS}!A1", rows)
-
-
-def column_index(letter: str) -> int:
-    """'A' -> 0, 'AA' -> 26."""
-    n = 0
-    for ch in letter:
-        n = n * 26 + (ord(ch) - 64)
-    return n - 1
+        self._request("POST", f"/values/{quote(self._lists_tab + '!A:ZZ', safe='')}:clear")
+        self._put(f"{self._lists_tab}!A1", rows)

@@ -7,8 +7,8 @@ from __future__ import annotations
 
 import pytest
 
+from lead_capture.domain.schema import get_schema
 from lead_capture.ports.llm import (
-    EXTRACTABLE_FIELDS,
     ExtractionResult,
     Instruction,
     LLMClient,
@@ -36,7 +36,7 @@ async def check_extract_returns_result_with_usage(factory):
 
 async def check_extract_drops_unknown_fields(factory):
     result = await factory("extra_fields").extract(TURN)
-    assert set(result.fields) <= set(EXTRACTABLE_FIELDS)
+    assert set(result.fields) <= set(get_schema().field_names())
 
 
 async def check_reply_returns_text_with_usage(factory):

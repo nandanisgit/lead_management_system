@@ -20,7 +20,7 @@ uv sync                      # install dependencies
 cp .env.example .env         # fill in the variables below
 uv run alembic upgrade head  # create the local SQLite store
 uv run lead-capture check-sheet   # verifies access and header contract
-uv run lead-capture sync-lists    # writes config/lists.yaml into the Lists tab
+uv run lead-capture sync-lists    # writes the allowed values from config/requirement.yaml into the Lists tab
 ```
 
 | Variable | Notes |

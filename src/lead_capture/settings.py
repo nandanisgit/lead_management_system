@@ -21,11 +21,22 @@ DEFAULT_SETTINGS_FILE = ROOT / "config" / "settings.yaml"
 
 
 class _Tokens(BaseModel):
+    """Output-token caps per call type."""
+
     extraction: PositiveInt
     reply: PositiveInt
 
 
+class SchemaFiles(BaseModel):
+    """Paths (relative to the project root) of the config that defines fields and texts."""
+
+    requirement_file: str
+    messages_file: str
+
+
 class LLMSettings(BaseModel):
+    """Model choice and cost/performance knobs per call (research R16)."""
+
     provider: Literal["anthropic", "fake", "stub"]
     extraction_model: str
     reply_model: str
@@ -42,6 +53,8 @@ class LLMSettings(BaseModel):
 
 
 class ConversationSettings(BaseModel):
+    """Conversation limits and thresholds (FR-001, FR-019, FR-023, FR-030)."""
+
     max_questions_per_message: PositiveInt
     max_words_per_message: PositiveInt
     debounce_ms: int = Field(ge=0)
@@ -54,6 +67,8 @@ class ConversationSettings(BaseModel):
 
 
 class ChannelSettings(BaseModel):
+    """Messaging adapter choice, send timeout and retries."""
+
     provider: Literal["whatsapp_cloud", "fake"]
     send_timeout_seconds: PositiveFloat
     max_retries: int = Field(ge=0)
@@ -61,29 +76,39 @@ class ChannelSettings(BaseModel):
 
 
 class LeadsSettings(BaseModel):
+    """Lead-register adapter choice, outbox timing and API timeout."""
+
     repository: Literal["google_sheet", "in_memory"]
     outbox_interval_seconds: PositiveInt
     max_backoff_seconds: PositiveInt
     retry_base_seconds: PositiveFloat
+    request_timeout_seconds: PositiveFloat
 
 
 class ProviderSettings(BaseModel):
+    """Which adapter to use for a simple port (queue, lock, clock)."""
+
     provider: str
 
 
 class OpsSettings(BaseModel):
+    """Operations team time zone and working hours."""
+
     timezone: str
     hours_start: time
     hours_end: time
 
     @model_validator(mode="after")
     def _order(self) -> OpsSettings:
+        """Working hours must start before they end."""
         if self.hours_start >= self.hours_end:
             raise ValueError("ops.hours_start must be before ops.hours_end")
         return self
 
 
 class RetentionSettings(BaseModel):
+    """How long each kind of data is kept (FR-026)."""
+
     transcript_days: PositiveInt
     lead_days: PositiveInt
     handoff_days: PositiveInt
@@ -91,47 +116,67 @@ class RetentionSettings(BaseModel):
 
 
 class JobsSettings(BaseModel):
+    """How often scheduled jobs run."""
+
     stalled_every_minutes: PositiveInt
     handoff_sync_every_minutes: PositiveInt
     retention_cron: str
 
 
 class CostsSettings(BaseModel):
+    """Where price rates live and the currency conversion for reports."""
+
     rates_file: str
     usd_to_inr: PositiveFloat
 
 
 class EvalsSettings(BaseModel):
+    """Eval runs: repeats, pass threshold, tutee model, PR subset."""
+
     repeats: PositiveInt
     pass_threshold: float = Field(gt=0, le=1)
     tutee_model: str
     pr_subset: list[str]
+    max_turns: PositiveInt
+    tutee_max_tokens: PositiveInt
+    simulated_time: time
 
 
 class _Burst(BaseModel):
+    """The `burst` load profile (real model, test sheet)."""
+
     concurrent_tutees: PositiveInt
     peak_msgs_per_second: PositiveFloat
     minutes: PositiveFloat
 
 
 class _Capacity(BaseModel):
+    """The `capacity` load profile (stubbed model)."""
+
     max_tutees: PositiveInt
 
 
 class _Soak(BaseModel):
+    """The `soak` load profile (stubbed model, hours of steady traffic)."""
+
     msgs_per_second: PositiveFloat
     hours: PositiveFloat
 
 
 class LoadSettings(BaseModel):
+    """Load-test profile parameters (research R13)."""
+
     burst: _Burst
     capacity: _Capacity
     soak: _Soak
 
 
 class Settings(BaseSettings):
+    """Every tunable number in one validated object (config/settings.yaml + LC__ env)."""
+
     model_config = SettingsConfigDict(env_prefix="LC__", env_nested_delimiter="__", extra="forbid")
 
+    schema_files: SchemaFiles
     llm: LLMSettings
     conversation: ConversationSettings
     channel: ChannelSettings
@@ -152,6 +197,7 @@ class Settings(BaseSettings):
 
 
 def _deep_merge(base: dict, override: dict) -> dict:
+    """Merge nested dicts: values in ``override`` win, nested groups merge."""
     out = dict(base)
     for key, value in override.items():
         if isinstance(value, dict) and isinstance(out.get(key), dict):
@@ -162,6 +208,7 @@ def _deep_merge(base: dict, override: dict) -> dict:
 
 
 def _env_overrides() -> dict:
+    """LC__GROUP__KEY environment variables as a nested dict."""
     tree: dict = {}
     for name, value in os.environ.items():
         if not name.startswith("LC__"):
@@ -185,6 +232,7 @@ def load_settings(path: Path | str | None = None, **overrides: Any) -> Settings:
 
 @lru_cache(maxsize=1)
 def get_settings() -> Settings:
+    """Settings for this process, loaded once."""
     return load_settings()
 
 

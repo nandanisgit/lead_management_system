@@ -1,0 +1,445 @@
+# =====================================================================================
+# THE ONE PLACE for the tutor-requirement ("tutor query") fields.
+#
+# To ADD, REMOVE or CHANGE a field, edit only this file:
+#   1. `fields:`      validation type, options, when it is required, labels, the question
+#                     to ask, and the hint given to the language model
+#   2. `ask_groups:`  if the field must be asked (order and grouping of questions)
+#   3. `summary:`     if the tutee should see it in the confirmation summary
+#   4. `sheet:`       which column of the operations Google Sheet holds it
+#                     (then add the same header to the sheet itself)
+#
+# Everything else is generated from this file at start-up: the model's extraction tool
+# schema, validation and normalisation, the questions, the summary, the lead row, the
+# sheet header check, the Lists tab and the eval checks. The service refuses to start if
+# this file is inconsistent (e.g. a group names a field that does not exist).
+# See docs/coding-guidelines.md → "Adding or removing a requirement field".
+#
+# Templates use {name} placeholders, {name|default} for a fallback, and [ ... ] for an
+# optional part that is dropped when any placeholder inside it is empty.
+# =====================================================================================
+
+version: 1
+
+# ---------------------------------------------------------------- allowed values
+lists:
+  grade_levels: [Class 1, Class 2, Class 3, Class 4, Class 5, Class 6, Class 7, Class 8,
+                 Class 9, Class 10, Class 11, Class 12, Undergraduate, Postgraduate, Adult]
+  school_grade_levels: [Class 1, Class 2, Class 3, Class 4, Class 5, Class 6, Class 7,
+                        Class 8, Class 9, Class 10, Class 11, Class 12]
+  minor_grade_levels: [Class 1, Class 2, Class 3, Class 4, Class 5, Class 6, Class 7,
+                       Class 8, Class 9, Class 10, Class 11, Class 12]      # FR-029
+  grade_aliases: {ug: Undergraduate, undergrad: Undergraduate, college: Undergraduate,
+                  graduation: Undergraduate, pg: Postgraduate, postgrad: Postgraduate,
+                  masters: Postgraduate, adult: Adult}
+  boards: [CBSE, ICSE, State, IB, IGCSE]
+  non_school_boards: [University, N/A]
+  board_aliases: {state board: State}
+  subjects: [Maths, Science, Physics, Chemistry, Biology, English, Hindi, Sanskrit, French,
+             Social Science, History, Geography, Economics, Accountancy, Business Studies,
+             Computer Science, Coding, EVS, Statistics]
+  subject_aliases: {math: Maths, mathematics: Maths, sst: Social Science,
+                    social studies: Social Science, cs: Computer Science,
+                    computer: Computer Science, computers: Computer Science, bio: Biology,
+                    chem: Chemistry, phy: Physics, accounts: Accountancy, eco: Economics,
+                    bst: Business Studies, programming: Coding}
+  cities: [Delhi, Noida, Greater Noida, Gurugram, Ghaziabad, Faridabad]  # home tuition area
+  city_aliases: {new delhi: Delhi, gurgaon: Gurugram, gr noida: Greater Noida,
+                 greater noida west: Greater Noida}
+  # Approximate NCR PIN ranges (inclusive). Review with operations before launch.
+  ncr_pin_ranges: [[110001, 110099], [201001, 201019], [201301, 201318], [122001, 122018],
+                   [122050, 122052], [121001, 121013]]
+  modes: [online, home, either]
+  budget_units: [per_hour, per_month]
+  budget_unit_aliases: {per hour: per_hour, hourly: per_hour, hour: per_hour,
+                        an hour: per_hour, /hr: per_hour, per hr: per_hour,
+                        per month: per_month, monthly: per_month, month: per_month,
+                        a month: per_month, /month: per_month, per mo: per_month}
+  relationships: [parent, student, other]
+  guardian_relationships: [mother, father, guardian, other]
+  goals: [Board exam prep, Concept clarity, Homework help, Competitive exam (JEE),
+          Competitive exam (NEET), Olympiad, Spoken English, Other]
+  asap_words: [asap, immediately, now, right away, as soon as possible, abhi, turant]
+  lead_statuses: [NEW, IN_REVIEW, TUTOR_SEARCH, MATCHED, CLOSED]
+
+# ---------------------------------------------------------------- fields
+# Processed in this order on every update, so a field that others depend on (mode before
+# area/city, budget_min before budget_max) must come first.
+#
+# type:            text | choice | multi_choice | grade | positive_int | int_range |
+#                  date_or_asap | email_address | postal_code
+# required:        true | false | {when: <condition>}      (false = recorded if volunteered)
+# conditions:      {field: f, equals|not_equals: v} | {field: f, in|not_in: [..]} |
+#                  {field: f, in_list|not_in_list: list_name} | {field: f, is_set: true} |
+#                  {flag: minor_alone} | {all: [..]} | {any: [..]}
+# pii: true        values are never written to logs
+fields:
+  contact_name:
+    type: text
+    min_length: 1
+    max_length: 60
+    required: true
+    pii: true
+    label: {en: your name, hi: aapka naam}
+    ask: {en: "May I know your name?", hi: "Aapka naam kya hai?"}
+    llm: {description: "Name of the person chatting"}
+
+  relationship:
+    type: choice
+    options: [relationships]
+    required: true
+    label: {en: parent or student, hi: parent ya student}
+    ask: {en: "Are you the parent or the student?", hi: "Aap parent hain ya student?"}
+    llm: {description: "Who is chatting: the student's parent, the student, or someone else",
+          enum: true}
+
+  student_name:
+    type: text
+    min_length: 1
+    max_length: 60
+    required: true
+    pii: true
+    copy_from: {field: contact_name, when: {field: relationship, equals: student}}
+    label: {en: student's name, hi: student ka naam}
+    ask: {en: "What's the student's name?", hi: "Student ka naam kya hai?"}
+    llm: {description: "Name of the student who needs the tutor"}
+
+  grade_level:
+    type: grade
+    options: [grade_levels]
+    option_aliases: grade_aliases
+    numbered: {format: "Class {n}", min: 1, max: 12}   # "9th", "class IX", "std 9" → Class 9
+    required: true
+    label: {en: class, hi: class}
+    ask: {en: "Which class or level is[ {student_name}] in?",
+          hi: "{student_name|Student} kaunsi class ya level mein hai?"}
+    llm: {description: "Student's class or level, e.g. Class 9, Undergraduate"}
+
+  board:
+    type: choice
+    options: [boards, non_school_boards]
+    option_aliases: board_aliases
+    # required until the level is known, then only for school classes
+    required: {when: {any: [{field: grade_level, is_set: false},
+                            {field: grade_level, in_list: school_grade_levels}]}}
+    default: {value: N/A, when: {all: [{field: grade_level, is_set: true},
+                                       {field: grade_level, not_in_list: school_grade_levels},
+                                       {field: board, not_in_list: non_school_boards}]}}
+    buttons: [boards]                     # offered as tap options when asked on its own
+    display: {hide_values: [N/A]}
+    label: {en: board, hi: board}
+    ask: {en: "Which board is it?", hi: "Board kaunsa hai?"}
+    llm: {description: "School board: CBSE, ICSE, State, IB or IGCSE"}
+
+  subjects:
+    type: multi_choice
+    options: [subjects]
+    option_aliases: subject_aliases
+    min_items: 1
+    max_items: 5
+    required: true
+    display: {join: ", "}
+    label: {en: subjects, hi: subjects}
+    ask: {en: "Which subjects do you need help with?",
+          hi: "Kaunse subjects ke liye tutor chahiye?"}
+    llm: {description: "Subjects needing tuition, one item per subject"}
+
+  mode:
+    type: choice
+    options: [modes]
+    required: true
+    buttons: [modes]
+    option_labels:
+      en: {online: Online, home: Home tuition, either: Online or home}
+      hi: {online: Online, home: Ghar par tuition, either: Online ya ghar par}
+    button_labels:
+      en: {online: Online, home: Home, either: Either}
+      hi: {online: Online, home: Ghar par, either: Koi bhi}
+    label: {en: online or home, hi: online ya home}
+    ask: {en: "Would you prefer online classes or a tutor coming home?",
+          hi: "Aap online classes chahenge ya ghar par tutor?"}
+    llm: {description: "online, home (tutor visits), or either", enum: true}
+
+  area:
+    type: text
+    min_length: 2
+    max_length: 80
+    required: {when: {field: mode, not_in: [online]}}
+    clear_when: {field: mode, equals: online}
+    pii: true
+    label: {en: area, hi: area}
+    ask: {en: "Which area are you in?", hi: "Aap kis area mein hain?"}
+    llm: {description: "Locality or area for home tuition"}
+
+  city:
+    type: choice
+    options: [cities]
+    option_aliases: city_aliases
+    service_area: options                # a city outside the list is outside the service area
+    required: {when: {field: mode, not_in: [online]}}
+    clear_when: {field: mode, equals: online}
+    label: {en: city, hi: city}
+    ask: {en: "Which city is that in?", hi: "Yeh kis city mein hai?"}
+    llm: {description: "City, exactly as the tutee said it (any city)"}
+
+  pincode:
+    type: postal_code
+    digits: 6
+    service_area: {ranges: ncr_pin_ranges}
+    required: false
+    clear_when: {field: mode, equals: online}
+    label: {en: PIN code, hi: PIN code}
+    llm: {description: "6-digit Indian PIN code"}
+
+  schedule:
+    type: text
+    min_length: 3
+    max_length: 120
+    required: true
+    label: {en: days and times, hi: din aur time}
+    ask: {en: "Which days and times usually work best?",
+          hi: "Kaunse din aur kis time aapke liye theek rahega?"}
+    llm: {description: "Preferred days and times, in the tutee's words"}
+
+  start_date:
+    type: date_or_asap
+    asap_value: ASAP
+    asap_words: asap_words
+    max_days_ahead: 180
+    required: true
+    label: {en: start date, hi: shuru karne ki date}
+    ask: {en: "When would you like to start — as soon as possible, or a specific date?",
+          hi: "Kab se shuru karna chahenge — jaldi se jaldi, ya koi khaas date?"}
+    llm: {description: "ASAP or YYYY-MM-DD"}
+
+  budget_min:
+    type: positive_int
+    required: true
+    label: {en: budget, hi: budget}
+    ask: {en: "Roughly what budget would you be comfortable with?",
+          hi: "Andaazan kitna budget theek rahega?"}
+    llm: {description: "Budget in whole rupees (lower end if a range). Only if stated."}
+
+  budget_max:
+    type: positive_int
+    at_least_field: budget_min
+    mirror_from: budget_min              # a single figure sets both ends
+    required: false
+    label: {en: budget, hi: budget}
+    llm: {description: "Upper end of the budget in whole rupees, if a range was given"}
+
+  budget_unit:
+    type: choice
+    options: [budget_units]
+    option_aliases: budget_unit_aliases
+    required: true
+    option_labels:
+      en: {per_hour: per hour, per_month: per month}
+      hi: {per_hour: per hour, per_month: per month}
+      sheet: {per_hour: per hour, per_month: per month}
+    label: {en: per hour or per month, hi: per hour ya per month}
+    ask: {en: "Is that per hour or per month?", hi: "Yeh per hour hai ya per month?"}
+    llm: {description: "per_hour or per_month", enum: true}
+
+  goal:
+    type: text
+    min_length: 1
+    max_length: 120
+    required: false
+    label: {en: goal, hi: goal}
+    llm: {description: "Learning goal, e.g. board exam prep, JEE, homework help"}
+
+  sessions_per_week:
+    type: int_range
+    min: 1
+    max: 7
+    required: false
+    label: {en: sessions per week, hi: hafte mein kitni classes}
+    llm: {description: "Number of sessions per week"}
+
+  tutor_preferences:
+    type: text
+    min_length: 1
+    max_length: 200
+    required: false
+    label: {en: tutor preferences, hi: tutor preferences}
+    llm: {description: "Preferences about the tutor: gender, language, experience"}
+
+  level_notes:
+    type: text
+    min_length: 1
+    max_length: 300
+    required: false
+    label: {en: notes, hi: notes}
+    llm: {description: "Notes on the student's current level or difficulties"}
+
+  email:
+    type: email_address
+    required: false
+    pii: true
+    label: {en: email, hi: email}
+    llm: {description: "Alternate email address"}
+
+  guardian_name:
+    type: text
+    min_length: 1
+    max_length: 60
+    required: {when: {flag: minor_alone}}             # FR-029
+    pii: true
+    label: {en: parent's or guardian's name, hi: parent/guardian ka naam}
+    ask: {en: "What's your parent's or guardian's name?",
+          hi: "Apne parent ya guardian ka naam bataoge?"}
+    llm: {description: "Name of the student's parent or guardian (minors chatting alone)"}
+
+  guardian_relationship:
+    type: choice
+    options: [guardian_relationships]
+    required: {when: {flag: minor_alone}}
+    label: {en: how they're related, hi: rishta}
+    ask: {en: "How are they related to you — mother, father or guardian?",
+          hi: "Woh aapke kya lagte hain — mummy, papa ya guardian?"}
+    llm: {description: "mother, father, guardian or other", enum: true}
+
+# ---------------------------------------------------------------- question order
+# Missing required fields are asked group by group, in this order (at most
+# conversation.max_questions_per_message fields per message). A group's `ask` is used when
+# the whole group is missing; otherwise each field's own `ask`.
+ask_groups:
+  - fields: [contact_name, relationship]
+    ask: {en: "May I know your name, and are you the parent or the student?",
+          hi: "Aapka naam kya hai, aur aap parent hain ya student?"}
+  - fields: [student_name]
+  - fields: [grade_level, board]
+    ask: {en: "Which class is[ {student_name}] in, and which board — CBSE, ICSE or State?",
+          hi: "{student_name|Student} kaunsi class mein hai, aur board kaunsa hai — CBSE, ICSE ya State?"}
+  - fields: [subjects]
+  - fields: [mode]
+  - fields: [area, city]
+    ask: {en: "Which area and city are you in? (Home tuition is available across Delhi/NCR.)",
+          hi: "Aap kis area aur city mein hain? (Home tuition Delhi/NCR mein available hai.)"}
+  - fields: [schedule]
+  - fields: [start_date]
+  - fields: [budget_min, budget_unit]
+    ask: {en: "Do you have a budget in mind, per hour or per month? A rough figure is fine.",
+          hi: "Aapka budget kitna hai, per hour ya per month? Andaaz se bata dijiye."}
+  - fields: [guardian_name, guardian_relationship]
+    ask: {en: "Could you share your parent's or guardian's name, and how they're related to you? Our team will speak with them.",
+          hi: "Apne parent ya guardian ka naam bata sakte ho, aur woh aapke kya lagte hain? Hamari team unse baat karegi."}
+
+# ---------------------------------------------------------------- rules using fields
+student_key_field: student_name          # one active lead per WhatsApp number + this field
+
+minor_alone_when:                        # FR-029
+  all:
+    - {field: relationship, equals: student}
+    - {field: grade_level, in_list: minor_grade_levels}
+never_minor_when: {field: relationship, equals: parent}
+
+service_area:                            # FR-012: home tuition in Delhi/NCR only
+  mode_field: mode
+  online_value: online                   # location not needed
+  flexible_value: either                 # outside the area → switch to online
+  location_fields: [area, city, pincode]
+
+# ---------------------------------------------------------------- confirmation summary
+summary:
+  derived:                               # extra placeholders computed from several fields
+    budget:
+      min: budget_min
+      max: budget_max
+      unit: budget_unit
+      same: "₹{min} {unit}"
+      range: "₹{min}–{max} {unit}"
+  lines:
+    en:
+      - "• {student_name}, {grade_level}[ {board}]"
+      - "• {subjects}"
+      - "• {mode}[ — {area}, {city}]"
+      - "• {schedule}; start {start_date}"
+      - "• Budget {budget}"
+      - "[• Parent/guardian: {guardian_name} ({guardian_relationship})]"
+    hi:
+      - "• {student_name}, {grade_level}[ {board}]"
+      - "• {subjects}"
+      - "• {mode}[ — {area}, {city}]"
+      - "• {schedule}; shuru {start_date}"
+      - "• Budget {budget}"
+      - "[• Parent/guardian: {guardian_name} ({guardian_relationship})]"
+
+# ---------------------------------------------------------------- operations Google Sheet
+# Column order = sheet order (A, B, C, ...). `value: field.<name>` or `value: meta.<name>`;
+# `parts:` joins several templates with `separator`; `owner: ops` columns are never
+# written by the bot and must come last.
+sheet:
+  time_format: "%Y-%m-%d %H:%M"
+  lead_id_prefix: L
+  handoff_id_prefix: H
+  initial_status: NEW
+  default_source: organic               # Source column when no ad referral is present
+  language_labels: {en: English, hi: Hindi}
+  minor_marker: "MINOR – consent given by student – contact parent/guardian: {guardian_name} ({guardian_relationship})"
+
+  leads:
+    tab: Leads
+    key_column: Lead ID
+    created_column: Created At
+    columns:
+      - {header: Lead ID, value: meta.lead_id}
+      - {header: Created At, value: meta.created_at}
+      - {header: WhatsApp Number, value: meta.whatsapp_number}
+      - {header: Contact Name, value: field.contact_name}
+      - {header: Relationship, value: field.relationship}
+      - {header: Student Name, value: field.student_name}
+      - {header: Class / Level, value: field.grade_level}
+      - {header: Board, value: field.board}
+      - {header: Subjects, value: field.subjects}
+      - {header: Mode, value: field.mode}
+      - {header: Area, value: field.area}
+      - {header: City, value: field.city}
+      - {header: PIN Code, value: field.pincode}
+      - {header: Preferred Schedule, value: field.schedule}
+      - {header: Start Date, value: field.start_date}
+      - {header: Budget Min (₹), value: field.budget_min}
+      - {header: Budget Max (₹), value: field.budget_max}
+      - {header: Budget Unit, value: field.budget_unit}
+      - {header: Goal, value: field.goal}
+      - {header: Sessions per Week, value: field.sessions_per_week}
+      - {header: Tutor Preferences, value: field.tutor_preferences}
+      - {header: Notes, parts: ["{minor_marker}", "{level_notes}", "[Email: {email}]"],
+         separator: " | "}
+      - {header: Language, value: meta.language}
+      - {header: Source, value: meta.source}
+      - {header: Consent At, value: meta.consent_at}
+      - {header: Status, value: meta.status}
+      - {header: Assigned To, owner: ops}
+      - {header: Ops Notes, owner: ops}
+      - {header: Last Updated, owner: ops}
+
+  handoffs:
+    tab: Handoffs
+    key_column: Handoff ID
+    created_column: Time
+    reply_by_column: Reply By
+    resolved_column: Resolved
+    resolved_value: Resolved
+    columns:
+      - {header: Handoff ID, value: meta.handoff_id}
+      - {header: Time, value: meta.time}
+      - {header: WhatsApp Number, value: meta.whatsapp_number}
+      - {header: Name, value: meta.name}
+      - {header: Reason, value: meta.reason}
+      - {header: Captured So Far, value: meta.captured_so_far}
+      - {header: Lead ID, value: meta.lead_id}
+      - {header: Reply By, value: meta.reply_by}
+      - {header: Resolved, owner: ops}
+
+  lists_tab:
+    tab: Lists
+    columns:                              # dropdown values for the Leads tab
+      - {header: Class / Level, field: grade_level}
+      - {header: Board, field: board}
+      - {header: Subjects, field: subjects}
+      - {header: City, field: city}
+      - {header: Mode, field: mode}
+      - {header: Budget Unit, field: budget_unit, labels: sheet}
+      - {header: Status, list: lead_statuses}

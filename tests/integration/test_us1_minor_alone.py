@@ -35,7 +35,9 @@ async def test_student_alone_is_asked_for_guardian_and_flagged(session_factory):
     assert "share this with your parent" in summary.text
     await h.say(choice="confirm:yes")
     [row] = h.leads_rows()
-    assert row[21].startswith("MINOR – consent given by student – contact parent/guardian: Sunita")
+    assert h.cell(row, "Notes").startswith(
+        "MINOR – consent given by student – contact parent/guardian: Sunita (mother)"
+    )
 
 
 async def test_parent_for_class_9_child_not_asked_for_guardian(session_factory):

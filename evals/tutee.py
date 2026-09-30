@@ -1,6 +1,10 @@
-"""Simulated tutee for evals (research R10): a small Claude model that answers only from the
-scenario's facts, in the scenario's style. Evals are test tooling, not domain code, so calling the
-vendor SDK here is allowed (CLAUDE.md rule applies to src/)."""
+"""Simulated tutee for evals (research R10).
+
+Why: scripted tutee lines break whenever the bot asks in a different order. A small Claude
+model plays the tutee instead, answering only from the scenario's facts in its style. Evals
+are test tooling, not domain code, so calling the vendor SDK here is allowed (the CLAUDE.md
+adapter rule applies to src/).
+"""
 
 from __future__ import annotations
 
@@ -27,9 +31,15 @@ Rules:
 
 
 class SimulatedTutee:
-    def __init__(self, model: str, facts: dict, style: str, extra: str = "", client=None):
+    """A model playing the tutee, constrained to the scenario's facts."""
+
+    def __init__(
+        self, model: str, max_tokens: int, facts: dict, style: str, extra: str = "", client=None
+    ):
+        """Prepare the role-play prompt; ``client`` defaults to the Anthropic SDK."""
         self._client = client or anthropic.Anthropic()
         self._model = model
+        self._max_tokens = max_tokens
         self._system = SYSTEM.format(
             facts=json.dumps(facts, ensure_ascii=False, indent=1), style=style, extra=extra
         )
@@ -46,7 +56,7 @@ class SimulatedTutee:
         if not messages or messages[0]["role"] != "user":
             messages.insert(0, {"role": "user", "content": "(conversation start)"})
         resp = self._client.messages.create(
-            model=self._model, max_tokens=150, system=self._system, messages=messages
+            model=self._model, max_tokens=self._max_tokens, system=self._system, messages=messages
         )
         self.usage["input_tokens"] += resp.usage.input_tokens
         self.usage["output_tokens"] += resp.usage.output_tokens

@@ -47,10 +47,17 @@ target-version = "py312"
 src = ["src", "tests", "evals", "load"]
 
 [tool.ruff.lint]
-select = ["E", "F", "I", "B", "UP", "SIM"]
+# D: every public module, class, method and function needs a docstring saying why it exists
+# (docs/coding-guidelines.md). Tests and migrations are exempt.
+select = ["E", "F", "I", "B", "UP", "SIM", "D"]
+ignore = ["D105", "D107"]  # magic methods; __init__ is documented on the class
+
+[tool.ruff.lint.pydocstyle]
+convention = "google"
 
 [tool.ruff.lint.per-file-ignores]
-"migrations/versions/*" = ["E501"]
+"migrations/**" = ["E501", "D"]
+"tests/**" = ["D"]
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"

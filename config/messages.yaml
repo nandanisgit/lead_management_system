@@ -1,0 +1,107 @@
+# All fixed texts the assistant sends (English and Hindi/Hinglish in Roman script).
+# Used for turns code can answer on its own (no model call) and as the fallback when a
+# model reply fails the guards. Every text must keep to conversation.max_questions_per_message
+# and conversation.max_words_per_message (checked by tests/unit/test_fixed_texts.py).
+# Field questions and labels live in config/requirement.yaml, not here.
+#
+# Placeholders: {name}, {name|default}; [ ... ] = optional part, dropped when a placeholder
+# inside it is empty.
+
+texts:
+  CONSENT:
+    en: "Hi[ {name}]! I'm the tutoring team's assistant and I'll help you find the right tutor. To do that I'll save the details you share; chats are kept {transcript_days} days and requests for up to a year. Shall we go ahead?"
+    hi: "Namaste[ {name}]! Main tutoring team ki assistant hoon aur sahi tutor dhoondhne mein aapki madad karungi. Iske liye aapki di hui details save hongi; chat {transcript_days} din aur request ek saal tak rakhi jaati hai. Kya hum aage badhein?"
+  CONSENT_REASK:
+    en: "Sorry, I didn't catch that. Is it okay for me to save your details so we can find you a tutor?"
+    hi: "Maaf kijiye, samajh nahi paayi. Kya main aapki details save kar sakti hoon taaki hum tutor dhoondh sakein?"
+  CLOSE_DECLINED:
+    en: "No problem, I haven't saved anything. If you change your mind, just message us here anytime."
+    hi: "Koi baat nahi, maine kuch save nahi kiya. Mann badle toh kabhi bhi yahan message kar dijiye."
+  ASK_OPEN:
+    en: "Great! Tell me a bit about what you're looking for — which class, subjects, and whether you'd like online or home tuition."
+    hi: "Badhiya! Thoda bataiye aapko kya chahiye — kaunsi class, kaunse subjects, aur online ya home tuition?"
+  ASK_GENERIC:
+    en: "Could you tell me a little more about what you need?"
+    hi: "Kya aap thoda aur bata sakte hain ki aapko kya chahiye?"
+  CLARIFY:
+    en: "Sorry, I couldn't use that — could you check the {fields}?"
+    hi: "Maaf kijiye, yeh samajh nahi aaya — kya aap {fields} dobara bata sakte hain?"
+  SUMMARY_LEAD_IN:
+    en: "Here's what I have:"
+    hi: "Maine yeh note kiya hai:"
+  SUMMARY_CONFIRM:
+    en: "Is this all correct?"
+    hi: "Kya sab sahi hai?"
+  SUMMARY_MINOR:
+    en: "Please share this with your parent or guardian too."
+    hi: "Ise apne parent ya guardian ke saath bhi share kar dena."
+  ASK_CHANGE:
+    en: "Sure — what would you like to change?"
+    hi: "Zaroor — kya badalna hai?"
+  CLOSE_COMPLETED_today:
+    en: "Thank you! I've passed this to our team and they'll get in touch with you today."
+    hi: "Dhanyavaad! Maine yeh team ko bhej diya hai, woh aaj hi aapse sampark karenge."
+  CLOSE_COMPLETED_after_start_today:
+    en: "Thank you! I've passed this to our team and they'll reach out after {start} today."
+    hi: "Dhanyavaad! Maine yeh team ko bhej diya hai, woh aaj {start} ke baad sampark karenge."
+  CLOSE_COMPLETED_after_start_tomorrow:
+    en: "Thank you! I've passed this to our team and they'll reach out after {start} tomorrow."
+    hi: "Dhanyavaad! Maine yeh team ko bhej diya hai, woh kal {start} ke baad sampark karenge."
+  POST_COMPLETION:
+    en: "Thanks! Our team has your request and will be in touch. If you need a tutor for someone else too, just tell me."
+    hi: "Dhanyavaad! Team ke paas aapki request hai, woh sampark karenge. Kisi aur ke liye bhi tutor chahiye toh bata dijiye."
+  REPHRASE:
+    en: "Sorry, I didn't quite get that. Could you say it another way?"
+    hi: "Maaf kijiye, theek se samajh nahi aaya. Kya aap doosre tareeke se bata sakte hain?"
+  FEES_OR_TUTORS:
+    en: "Our team will share fees and tutor details once they've reviewed your request."
+    hi: "Fees aur tutor ki details team aapki request dekhkar share karegi."
+  OFF_TOPIC_REDIRECT:
+    en: "Let's get your tutor sorted first."
+    hi: "Pehle aapke liye tutor dhoondh lete hain."
+  RATE_LIMITED:
+    en: "Thanks for your messages! Our team will follow up with you shortly."
+    hi: "Aapke messages ke liye dhanyavaad! Hamari team jaldi aapse sampark karegi."
+  LIST_BUTTON:
+    en: "Choose"
+    hi: "Chuniye"
+  LIST_SECTION:
+    en: "Options"
+    hi: "Vikalp"
+  ASK_FOR_TEXT:
+    en: "Sorry, I can only read text messages. Could you type your answer?"
+    hi: "Maaf kijiye, main sirf text message padh sakti hoon. Kya aap type karke bata sakte hain?"
+
+# How times are shown to tutees (e.g. "10 AM" in "after 10 AM tomorrow").
+time_display_format: "%-I %p"
+
+# Tap options that are not field values (field buttons come from requirement.yaml).
+choices:
+  consent:
+    - {id: "consent:yes", en: "Yes, go ahead", hi: "Haan, aage badhein"}
+    - {id: "consent:no", en: "No", hi: "Nahi"}
+  confirm:
+    - {id: "confirm:yes", en: "Confirm", hi: "Haan, sahi hai"}
+    - {id: "confirm:change", en: "Change", hi: "Kuch badalna hai"}
+
+# Local language detection (before consent, without a model call) and the reply-language
+# guard. Words are matched as whole words, case-insensitively.
+language:
+  default: en
+  hindi:
+    script_range: "ऀ-ॿ"          # Devanagari
+    # Words that mark a tutee's message as Hindi/Hinglish.
+    tutee_markers: [chahiye, chahie, hai, hain, ke liye, mujhe, mera, meri, beta, beti, bacche,
+                    baccha, kya, aap, ji, karna, padhai, padhana, nahi, haan, kitna, kaise, abhi]
+    # Words that show an assistant reply is in Hindi/Hinglish.
+    reply_markers: [hai, hain, aap, aapka, aapke, kya, ke, ka, ki, se, mein, kaunsi, kaunse,
+                    kitna, chahiye, batayein, bataiye, dhanyavaad, namaste, theek, zaroor, kab]
+    min_tutee_markers: 1                  # ≥ this many → tutee writes Hindi/Hinglish
+    min_reply_markers: 2                  # a "hi" reply needs ≥ this many (or Devanagari)
+    max_markers_in_english_reply: 3       # an "en" reply with more is the wrong language
+
+# Money mentions the assistant must never introduce (FR-006). Amounts the tutee stated
+# themselves may be repeated back.
+currency:
+  before_amount: ["₹", "rs.", "rs", "inr"]
+  after_amount: ["rs", "rupees", "rupaye", "/-"]

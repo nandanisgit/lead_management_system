@@ -1,36 +1,16 @@
+"""Eval scoring checks (evals/checks.py)."""
+
+from datetime import date
+
 from evals.checks import RunResult, lead_matches_facts, no_reask, score
 
+from lead_capture.conversation.summary import lead_values
+from lead_capture.domain.requirement import Requirement
+from lead_capture.domain.schema import get_schema
 from lead_capture.settings import load_settings
 
 LIMITS = load_settings().conversation
-ROW = [
-    "L-1",
-    "2026-09-29 15:00",
-    "'+91",
-    "Priya",
-    "parent",
-    "Aarav",
-    "Class 8",
-    "CBSE",
-    "Maths, Science",
-    "home",
-    "Dwarka Sector 12",
-    "Delhi",
-    "",
-    "weekdays after 5 pm",
-    "ASAP",
-    600,
-    600,
-    "per hour",
-    "",
-    "",
-    "",
-    "",
-    "English",
-    "organic",
-    "2026-09-29 14:50",
-    "NEW",
-]
+SCHEMA = get_schema()
 FACTS = {
     "contact_name": "Priya",
     "relationship": "parent",
@@ -47,10 +27,21 @@ FACTS = {
 }
 
 
+def row_for(facts):
+    fields = {k: v for k, v in facts.items() if k != "budget"}
+    fields |= {"budget_min": facts["budget"]["min"], "budget_unit": facts["budget"]["unit"]}
+    req, rejected = Requirement().apply(fields, SCHEMA, date(2026, 9, 29))
+    assert rejected == {}
+    return lead_values(SCHEMA, req, {}, minor_alone=False)
+
+
+ROW = row_for(FACTS)
+
+
 def test_lead_matches_facts():
     notes = []
-    assert lead_matches_facts(ROW, FACTS, notes) and notes == []
-    assert not lead_matches_facts(ROW, {**FACTS, "board": "ICSE"}, notes)
+    assert lead_matches_facts(ROW, FACTS, SCHEMA, notes) and notes == []
+    assert not lead_matches_facts(ROW, {**FACTS, "board": "ICSE"}, SCHEMA, notes)
     assert "board" in notes[0]
 
 
@@ -69,6 +60,6 @@ def test_score_flags_amounts_and_outcome():
         lead_row=ROW,
         asked_by_turn=[],
     )
-    score(r, {"tutee_facts": FACTS, "expect": {"outcome": "lead_recorded"}}, LIMITS)
+    score(r, {"tutee_facts": FACTS, "expect": {"outcome": "lead_recorded"}}, LIMITS, SCHEMA)
     assert r.checks["outcome"] and r.checks["fields_match (SC-001)"]
     assert not r.checks["no_amount (SC-003)"]

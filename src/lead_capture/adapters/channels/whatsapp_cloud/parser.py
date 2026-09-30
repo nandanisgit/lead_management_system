@@ -10,6 +10,7 @@ from lead_capture.ports.channel import InboundMessage
 
 
 def _ts(value: Any) -> datetime:
+    """Unix timestamp string → aware UTC datetime (now, if missing or malformed)."""
     try:
         return datetime.fromtimestamp(int(value), UTC)
     except (TypeError, ValueError):
@@ -17,6 +18,7 @@ def _ts(value: Any) -> datetime:
 
 
 def _normalise(raw: dict, contact: str, profile: str | None, is_echo: bool) -> InboundMessage:
+    """One Cloud API message object → InboundMessage (text, tap, or unsupported type)."""
     kind = raw.get("type")
     text = choice_id = None
     msg_type = "unsupported"
@@ -43,6 +45,7 @@ def _normalise(raw: dict, contact: str, profile: str | None, is_echo: bool) -> I
 
 
 def parse(body: bytes) -> list[InboundMessage]:
+    """Normalise a webhook body: tutee messages and Business-app echoes; statuses are ignored."""
     data = json.loads(body or b"{}")
     out: list[InboundMessage] = []
     for entry in data.get("entry", []):

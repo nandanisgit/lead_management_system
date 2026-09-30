@@ -22,6 +22,7 @@ from lead_capture.adapters.clock import FrozenClock
 from lead_capture.adapters.leads.in_memory import InMemoryLeadRepository
 from lead_capture.conversation.engine import Engine
 from lead_capture.conversation.inbound import handle_inbound
+from lead_capture.domain.schema import get_schema
 from lead_capture.jobs.outbox import drain_once
 from lead_capture.ports.channel import InboundMessage
 from lead_capture.registry import build_llm
@@ -34,28 +35,31 @@ from lead_capture.store.models import Conversation
 ROOT = Path(__file__).resolve().parent
 SCENARIOS = ROOT / "scenarios"
 REPORTS = ROOT / "reports"
-MAX_TURNS = 20
 
 
 class RecordingLLM:
     """Wraps the real LLMClient to record what each reply was asked to request."""
 
     def __init__(self, inner):
+        """Wrap ``inner``; start with no recorded asks or usage."""
         self.inner = inner
         self.asked: list[tuple[list[str], list[str]]] = []
         self.usage: defaultdict[str, int] = defaultdict(int)
 
     def _add(self, usage):
+        """Accumulate token usage per model."""
         if usage:
             for k in ("input_tokens", "output_tokens", "cache_read_tokens", "cache_write_tokens"):
                 self.usage[f"{usage.model}:{k}"] += getattr(usage, k)
 
     async def extract(self, turn):
+        """Delegate and record usage."""
         result = await self.inner.extract(turn)
         self._add(result.usage)
         return result
 
     async def write_reply(self, turn, instruction):
+        """Record which fields this reply asks for (and what was already captured)."""
         self.asked.append((instruction.params.get("fields", []), list(turn.state)))
         result = await self.inner.write_reply(turn, instruction)
         self._add(result.usage)
@@ -63,6 +67,7 @@ class RecordingLLM:
 
 
 def load_scenarios(name: str | None, pr_subset: bool, subset: list[str]) -> list[dict]:
+    """Scenario files, filtered by name or by the PR subset from settings."""
     out = []
     for f in sorted(SCENARIOS.glob("*.yaml")):
         sc = yaml.safe_load(f.read_text())
@@ -76,6 +81,7 @@ def load_scenarios(name: str | None, pr_subset: bool, subset: list[str]) -> list
 
 
 def _outcome(conv: Conversation | None) -> str:
+    """How a conversation ended, in the words scenarios use for ``expect.outcome``."""
     if conv is None:
         return "no_conversation"
     if conv.state == "completed":
@@ -88,11 +94,17 @@ def _outcome(conv: Conversation | None) -> str:
 
 
 async def run_one(scenario: dict, settings, secrets) -> RunResult:
+    """Play one scenario: simulated tutee vs the real engine and model; score the result."""
     db = make_engine("sqlite://")
     Base.metadata.create_all(db)
-    channel, leads = FakeChannel(), InMemoryLeadRepository()
-    llm = RecordingLLM(build_llm(settings, secrets))
-    clock = FrozenClock(datetime.now().replace(hour=15, minute=0), settings.ops.timezone)
+    schema = get_schema()
+    channel = FakeChannel()
+    leads = InMemoryLeadRepository(
+        schema.leads_layout(), schema.handoffs_layout(), timezone=settings.ops.timezone
+    )
+    llm = RecordingLLM(build_llm(settings, secrets, schema))
+    at = datetime.combine(datetime.now().date(), settings.evals.simulated_time)
+    clock = FrozenClock(at, settings.ops.timezone)
     sv = build_services(
         settings,
         secrets,
@@ -105,6 +117,7 @@ async def run_one(scenario: dict, settings, secrets) -> RunResult:
     engine = Engine(sv, on_lead_created=lambda: drain_once(sv))
     tutee = SimulatedTutee(
         settings.evals.tutee_model,
+        settings.evals.tutee_max_tokens,
         scenario["tutee_facts"],
         scenario.get("style", "plain English, short replies"),
         scenario.get("tutee_extra", ""),
@@ -113,7 +126,7 @@ async def run_one(scenario: dict, settings, secrets) -> RunResult:
     transcript: list[tuple[str, str]] = []
     scripted = list(scenario.get("script", []))
     next_text = scenario["opening"]
-    for n in range(MAX_TURNS):
+    for n in range(settings.evals.max_turns):
         choice = None
         if next_text.startswith("#"):
             choice, next_text = next_text[1:].strip(), None
@@ -149,11 +162,12 @@ async def run_one(scenario: dict, settings, secrets) -> RunResult:
         asked_by_turn=llm.asked,
         tokens={**llm.usage, **{f"tutee:{k}": v for k, v in tutee.usage.items()}},
     )
-    score(result, scenario, settings.conversation)
+    score(result, scenario, settings.conversation, schema)
     return result
 
 
 def write_report(results: list[RunResult], settings, threshold: float) -> tuple[Path, bool]:
+    """Markdown report with pass rates, per-run failures, tokens and effective settings."""
     REPORTS.mkdir(exist_ok=True)
     path = REPORTS / f"{datetime.now():%Y-%m-%d-%H%M%S}.md"
     rates: defaultdict[str, list[bool]] = defaultdict(list)
@@ -194,6 +208,7 @@ def write_report(results: list[RunResult], settings, threshold: float) -> tuple[
 
 
 def _sum_tokens(results):
+    """Total token usage across runs, per model."""
     total: defaultdict[str, int] = defaultdict(int)
     for r in results:
         for k, v in r.tokens.items():
@@ -202,6 +217,7 @@ def _sum_tokens(results):
 
 
 def run(scenario=None, pr_subset=False, model=None, repeats=None) -> int:
+    """Entry point for `lead-capture eval`; returns the process exit code."""
     secrets = Secrets()
     if not (secrets.anthropic_api_key or os.environ.get("ANTHROPIC_API_KEY")):
         print("ANTHROPIC_API_KEY is not set — evals need the real model.")

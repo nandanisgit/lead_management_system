@@ -8,4 +8,8 @@ from typing import Protocol, runtime_checkable
 
 @runtime_checkable
 class ConversationLock(Protocol):
-    def hold(self, key: str) -> AbstractAsyncContextManager[None]: ...
+    """Serialises turns per contact (in-memory now, shared later — research R14)."""
+
+    def hold(self, key: str) -> AbstractAsyncContextManager[None]:
+        """Async context manager holding the lock for ``key``."""
+        ...

@@ -9,7 +9,7 @@ async def test_correction_at_summary_then_confirm(session_factory):
     assert "weekends" in revised.text and revised.choices[0].id == "confirm:yes"
     await h.say(choice="confirm:yes")
     [row] = h.leads_rows()
-    assert row[13] == "weekends"
+    assert h.cell(row, "Preferred Schedule") == "weekends"
 
 
 async def test_change_button_asks_what_to_change(session_factory):

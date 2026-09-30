@@ -5,35 +5,45 @@ import respx
 from lead_capture.adapters.leads.google_sheet import GoogleSheetLeadRepository
 from lead_capture.ports.leads import RepositoryContractError, RepositoryUnavailable
 from tests.contract.fake_sheets import BASE, SHEET_ID, FakeSheets
-from tests.contract.lead_repository_suite import ALL_CHECKS, make_lead
+from tests.contract.lead_repository_suite import ALL_CHECKS, HANDOFFS, LEADS, make_lead
+
+
+def repo():
+    return GoogleSheetLeadRepository(
+        SHEET_ID,
+        lambda: "token",
+        leads=LEADS,
+        handoffs=HANDOFFS,
+        lists_tab="Lists",
+        timezone="Asia/Kolkata",
+        timeout_seconds=5,
+    )
 
 
 class Ctx:
     def __init__(self, router):
         self.sheets = FakeSheets()
-        self._router = router
-        router.route(url__startswith=BASE).mock(side_effect=self._dispatch)
         self._active = self.sheets
-        self.repo = GoogleSheetLeadRepository(SHEET_ID, lambda: "token")
-
-    def _dispatch(self, request):
-        return self._active.handler(request)
+        router.route(url__startswith=BASE).mock(side_effect=lambda r: self._active.handler(r))
+        self.repo = repo()
 
     def bad_headers_repo(self):
         self._active = FakeSheets(lead_headers=("Wrong",))
-        return GoogleSheetLeadRepository(SHEET_ID, lambda: "token")
+        return repo()
 
-    def ops_write(self, lead_id, column, value):
-        self.sheets.set_cell("Leads", lead_id, column, value)
+    def ops_write(self, lead_id, header, value):
+        self.sheets.set_cell(LEADS.tab, lead_id, LEADS.index(header), value)
 
     def lead_values(self, lead_id):
-        return self.sheets.row("Leads", lead_id)
+        return self.sheets.row(LEADS.tab, lead_id)
 
     def lead_count(self):
-        return len(self.sheets.grids["Leads"]) - 1
+        return len(self.sheets.grids[LEADS.tab]) - 1
 
     def mark_resolved(self, handoff_id):
-        self.sheets.set_cell("Handoffs", handoff_id, "I", "Resolved")
+        self.sheets.set_cell(
+            HANDOFFS.tab, handoff_id, HANDOFFS.resolved_index, HANDOFFS.resolved_value
+        )
 
 
 @pytest.mark.parametrize("check", ALL_CHECKS, ids=lambda c: c.__name__)
@@ -42,13 +52,11 @@ def test_google_sheet_repository_contract(check):
         check(Ctx(router))
 
 
-def test_append_writes_only_a_to_z_and_prefixes_number():
+def test_append_writes_only_bot_columns():
     with respx.mock(assert_all_called=False) as router:
         ctx = Ctx(router)
         ctx.repo.append_lead(make_lead())
-        assert ctx.sheets.writes == [("append", "Leads!A:Z")]
-        row = ctx.lead_values("L-20260929-AAAA")
-        assert len(row) == 26 and row[2] == "'+919999900001" and row[25] == "NEW"
+        assert ctx.sheets.writes == [("append", LEADS.bot_range)]
 
 
 @pytest.mark.parametrize("code", [429, 500, 503])
@@ -64,7 +72,7 @@ def test_network_error_raises_unavailable():
     with respx.mock(assert_all_called=False) as router:
         router.route(url__startswith=BASE).mock(side_effect=httpx.ConnectError("down"))
         with pytest.raises(RepositoryUnavailable):
-            GoogleSheetLeadRepository(SHEET_ID, lambda: "t").exists("x")
+            repo().exists("x")
 
 
 def test_permission_error_is_contract_error():

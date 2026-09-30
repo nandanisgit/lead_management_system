@@ -1,7 +1,10 @@
 """One conversation turn: load → (deterministic shortcut | extract) → validate → decide → reply.
 
-Talks only to ports (LLMClient, MessagingChannel, Clock) and the store. Constitution II: the
-model proposes, RequirementState validates, and only CONFIRMING → COMPLETED creates a lead.
+Why: this is the single place where a tutee's messages turn into state changes and replies.
+It talks only to ports (LLMClient, MessagingChannel, Clock) and the store, and knows no
+field names — fields, questions and the summary all come from the requirement schema.
+Constitution II: the model proposes, ``Requirement.apply`` validates, and only the
+CONFIRMING → COMPLETED transition creates a lead.
 """
 
 from __future__ import annotations
@@ -17,9 +20,9 @@ from lead_capture.conversation import fixed_texts as ft
 from lead_capture.conversation import guards, planner, summary
 from lead_capture.conversation.minors import update_minor_flags
 from lead_capture.conversation.states import CloseReason, State, transition
-from lead_capture.domain.hours import when_team_contacts
-from lead_capture.domain.ids import new_lead_id
-from lead_capture.domain.requirement import RequirementState
+from lead_capture.domain.hours import format_ist, when_team_contacts
+from lead_capture.domain.ids import new_id
+from lead_capture.domain.requirement import Requirement
 from lead_capture.ports.channel import InboundMessage, OutboundMessage
 from lead_capture.ports.llm import (
     ExtractionResult,
@@ -35,13 +38,14 @@ from lead_capture.store.models import Contact, Conversation, LeadOutbox, Message
 
 log = logging.getLogger(__name__)
 
-TAP_PREFIXES = ("consent:", "mode:", "board:", "confirm:")
-FIXED_KINDS = {"FEES_OR_TUTORS_AND_STEER", "STRICT_REDIRECT"}
-
 
 @dataclass
 class Turn:
-    """Everything decided in one turn; replies are sent after the decision."""
+    """Everything decided in one turn.
+
+    Replies are sent only after the decision is saved, so a failed send never leaves the
+    database half-updated.
+    """
 
     contact: Contact
     conv: Conversation
@@ -52,13 +56,26 @@ class Turn:
 
 
 class Engine:
+    """Runs conversation turns. One instance per process; state lives in the database."""
+
     def __init__(self, services: Services, on_lead_created: Callable[[], None] | None = None):
+        """Build the engine from services.
+
+        ``on_lead_created`` is called after a lead is committed, e.g. to push it to the sheet
+        immediately instead of waiting for the scheduled outbox job.
+        """
         self.sv = services
         self.cfg = services.settings
+        self.schema = services.schema
         self.on_lead_created = on_lead_created
+        self.tap_prefixes = ft.choice_prefixes(self.schema)
 
     # ------------------------------------------------------------------ entry point
     async def run_turn(self, number: str, items: list[InboundMessage]) -> None:
+        """Handle one (debounced) batch of messages from a tutee and send the replies.
+
+        Echoes (messages ops sent from the Business app) never trigger a turn.
+        """
         items = [i for i in items if not i.is_echo]
         if not items:
             return
@@ -67,10 +84,13 @@ class Engine:
             conv = queries.active_conversation(db, contact.id)
             if conv is None:
                 latest = queries.latest_conversation(db, contact.id)
-                if latest is not None and latest.state == State.COMPLETED and contact.consent_at:
-                    handled = await self._after_completion(db, contact, latest, items)
-                    if handled:
-                        return
+                returning = (
+                    latest is not None
+                    and latest.state == State.COMPLETED
+                    and contact.consent_at is not None
+                )
+                if returning and await self._after_completion(db, contact, latest, items):
+                    return
                 conv = self._new_conversation(db, contact, items)
             self._attach(db, conv, items)
             turn = Turn(contact, conv, items, lang=contact.language or "en")
@@ -84,10 +104,13 @@ class Engine:
 
     # ------------------------------------------------------------------ helpers
     def _now(self):
+        """Current time from the Clock port (frozen in tests)."""
         return self.sv.clock.now()
 
     def _new_conversation(self, db: Session, contact: Contact, items) -> Conversation:
-        source = next((i.referral_source for i in items if i.referral_source), None) or "organic"
+        """Start a conversation; it begins at consent unless the contact consented before."""
+        referral = next((i.referral_source for i in items if i.referral_source), None)
+        source = referral or self.schema.sheet.default_source
         state = State.IN_PROGRESS if contact.consent_at else State.AWAITING_CONSENT
         conv = queries.start_conversation(db, contact.id, source=source, state=str(state))
         if not contact.consent_at:  # before consent, only a local guess (no model call)
@@ -95,34 +118,54 @@ class Engine:
         return conv
 
     def _attach(self, db: Session, conv: Conversation, items) -> None:
+        """Link the stored messages to the conversation and update its timestamps.
+
+        Also wakes a stalled conversation (FR-020).
+        """
         ids = [i.id for i in items]
         db.execute(
             update(Message)
             .where(Message.wa_message_id.in_(ids), Message.conversation_id.is_(None))
             .values(conversation_id=conv.id)
         )
-        latest = max(i.timestamp for i in items)
-        conv.last_inbound_at = latest
+        conv.last_inbound_at = max(i.timestamp for i in items)
         conv.first_inbound_at = conv.first_inbound_at or min(i.timestamp for i in items)
         if conv.state == State.STALLED:
-            back = (
-                State.IN_PROGRESS
-                if db.get(Contact, conv.contact_id).consent_at
-                else (State.AWAITING_CONSENT)
-            )
-            transition(conv, back)
+            consented = db.get(Contact, conv.contact_id).consent_at
+            transition(conv, State.IN_PROGRESS if consented else State.AWAITING_CONSENT)
         db.flush()
 
     def _taps(self, items) -> list[str]:
-        return [i.choice_id for i in items if i.choice_id and i.choice_id.startswith(TAP_PREFIXES)]
+        """Tap ids (button/list choices) in this batch that the engine understands."""
+        return [i.choice_id for i in items if self._is_tap(i)]
+
+    def _is_tap(self, item: InboundMessage) -> bool:
+        """A tap on one of the options the engine offered."""
+        return bool(item.choice_id and item.choice_id.startswith(self.tap_prefixes))
 
     def _only_taps(self, items) -> bool:
-        return all(i.choice_id and i.choice_id.startswith(TAP_PREFIXES) for i in items)
+        """True when every message in the batch is a recognised tap."""
+        return all(self._is_tap(i) for i in items)
 
     def _deterministic(self, items) -> bool:
+        """Taps can be handled without the model when the cost-saving setting is on."""
         return self.cfg.llm.skip_for_deterministic_turns and self._only_taps(items)
 
-    def _context(self, db: Session, turn: Turn, state: RequirementState) -> TurnContext:
+    def _tap_fields(self, taps: list[str]) -> dict:
+        """Field values chosen by tapping a field button ("<field>:<value>")."""
+        fields: dict = {}
+        for tap in taps:
+            name, _, value = tap.partition(":")
+            if name in self.schema.fields:
+                fields[name] = value
+        return fields
+
+    def _context(self, db: Session, turn: Turn, req: Requirement) -> TurnContext:
+        """Build what the model sees for this turn.
+
+        Trimmed transcript (``llm.context_messages``), validated state, still-missing fields and
+        the language — nothing unvalidated.
+        """
         msgs = queries.transcript(db, turn.conv.id, self.cfg.llm.context_messages)
         return TurnContext(
             transcript=[
@@ -130,15 +173,20 @@ class Engine:
                 for m in msgs
                 if m.body
             ],
-            state=state.captured(),
-            missing=state.missing_required(turn.conv.minor_alone),
+            state=req.captured(),
+            missing=req.missing_required(self.schema, turn.conv.minor_alone),
             language="hi" if turn.lang == "hi" else "en",
             stage=turn.conv.state,
         )
 
-    async def _extract(self, db: Session, turn: Turn, state: RequirementState) -> ExtractionResult:
+    async def _extract(self, db: Session, turn: Turn, req: Requirement) -> ExtractionResult:
+        """Ask the model for proposed field values and signals; record token usage.
+
+        On model failure the turn continues as "not understood" (the tutee is asked to
+        rephrase) instead of crashing.
+        """
         try:
-            result = await self.sv.llm.extract(self._context(db, turn, state))
+            result = await self.sv.llm.extract(self._context(db, turn, req))
         except LLMError:
             log.warning("extract_failed", extra={"conversation_id": turn.conv.id})
             return ExtractionResult(signals=Signals(understood=False))
@@ -147,42 +195,40 @@ class Engine:
             turn.lang = turn.contact.language = result.signals.language
         return result
 
-    def _tap_fields(self, taps: list[str]) -> dict:
-        fields: dict = {}
-        for tap in taps:
-            kind, _, value = tap.partition(":")
-            if kind in ("mode", "board"):
-                fields[kind] = value
-        return fields
+    def _apply(self, conv: Conversation, req: Requirement, fields: dict):
+        """Validate proposed values into the requirement and store it on the conversation."""
+        req, rejected = req.apply(fields, self.schema, self._now().date())
+        conv.collected = req.to_dict()
+        return req, rejected
 
     # ------------------------------------------------------------------ decide
     async def _decide(self, db: Session, turn: Turn) -> None:
-        conv = turn.conv
-        if conv.state == State.AWAITING_CONSENT:
+        """Route the turn by conversation state."""
+        if turn.conv.state == State.AWAITING_CONSENT:
             await self._consent(db, turn)
-        elif conv.state == State.CONFIRMING:
+        elif turn.conv.state == State.CONFIRMING:
             await self._confirming(db, turn)
-        elif conv.state == State.IN_PROGRESS:
+        elif turn.conv.state == State.IN_PROGRESS:
             await self._collect(db, turn)
 
     async def _consent(self, db: Session, turn: Turn) -> None:
+        """FR-005: ask for consent first; nothing is extracted or stored before a yes."""
         conv, contact = turn.conv, turn.contact
         if conv.last_outbound_at is None:
-            name = contact.wa_profile_name
             text = ft.text(
                 "CONSENT",
                 turn.lang,
-                name=name,
+                name=contact.wa_profile_name,
                 transcript_days=self.cfg.retention.transcript_days,
             )
-            turn.replies.append(OutboundMessage(text=text, choices=ft.consent_choices(turn.lang)))
+            turn.replies.append(ft.with_choices(text, ft.choices("consent", turn.lang), turn.lang))
             return
         taps = self._taps(turn.items)
         extraction: ExtractionResult | None = None
         if taps and self._deterministic(turn.items):
             consent = "given" if "consent:yes" in taps else "declined"
         else:
-            extraction = await self._extract(db, turn, RequirementState())
+            extraction = await self._extract(db, turn, Requirement())
             consent = extraction.signals.consent
             if "consent:yes" in taps:
                 consent = "given"
@@ -193,21 +239,16 @@ class Engine:
             turn.replies.append(OutboundMessage(text=ft.text("CLOSE_DECLINED", turn.lang)))
             return
         if consent != "given":
-            turn.replies.append(
-                OutboundMessage(
-                    text=ft.text("CONSENT_REASK", turn.lang),
-                    choices=ft.consent_choices(turn.lang),
-                )
-            )
+            reask = ft.text("CONSENT_REASK", turn.lang)
+            turn.replies.append(ft.with_choices(reask, ft.choices("consent", turn.lang), turn.lang))
             return
         contact.consent_at = self._now()
         transition(conv, State.IN_PROGRESS)
         db.flush()
-        # details the tutee gave before consenting are extracted only now (FR-005)
-        has_text = queries.transcript(db, conv.id, self.cfg.llm.context_messages)
-        tutee_text = [m for m in has_text if m.direction == "in" and m.type == "text"]
-        if extraction is None and tutee_text:
-            extraction = await self._extract(db, turn, RequirementState())
+        # details the tutee gave before consenting are read only now
+        earlier = queries.transcript(db, conv.id, self.cfg.llm.context_messages)
+        if extraction is None and any(m.direction == "in" and m.type == "text" for m in earlier):
+            extraction = await self._extract(db, turn, Requirement())
         await self._collect(db, turn, extraction=extraction, after_consent=True)
 
     async def _collect(
@@ -217,21 +258,25 @@ class Engine:
         extraction: ExtractionResult | None = None,
         after_consent: bool = False,
     ) -> None:
+        """Gather requirement details.
+
+        Validates what the tutee said, then asks for the next missing fields, or shows the
+        summary when nothing required is missing.
+        """
         conv = turn.conv
-        state = RequirementState.model_validate(conv.collected or {})
+        req = Requirement.from_dict(conv.collected)
         deterministic = False
         if extraction is None and not after_consent:
             if self._deterministic(turn.items):
                 deterministic = True
                 extraction = ExtractionResult(fields=self._tap_fields(self._taps(turn.items)))
             else:
-                extraction = await self._extract(db, turn, state)
+                extraction = await self._extract(db, turn, req)
         extraction = extraction or ExtractionResult()
         fields = {**extraction.fields, **self._tap_fields(self._taps(turn.items))}
-        state, rejected = state.apply(fields, self.sv.lists, self._now().date())
-        conv.collected = state.model_dump()
+        req, rejected = self._apply(conv, req, fields)
         signals = None if deterministic else extraction.signals
-        update_minor_flags(conv, state, signals, self.sv.lists)
+        update_minor_flags(conv, req, signals, self.schema)
 
         if signals is not None and not signals.understood and not fields:
             conv.misunderstand_streak += 1
@@ -239,92 +284,108 @@ class Engine:
             return
         conv.misunderstand_streak = 0
 
-        if after_consent and not fields and not state.captured():
+        if after_consent and not fields and not req.captured():
             turn.replies.append(OutboundMessage(text=ft.text("ASK_OPEN", turn.lang)))
             return
 
         instruction = planner.plan(
-            state,
+            req,
+            self.schema,
             minor_alone=conv.minor_alone,
             rejected=rejected,
             signals=signals,
             max_questions=self.cfg.conversation.max_questions_per_message,
         )
         if instruction.kind == "SUMMARISE_AND_CONFIRM":
-            self._summarise(turn, state)
+            self._summarise(turn, req)
             return
-        await self._reply(db, turn, state, instruction, deterministic=deterministic)
+        await self._reply(db, turn, req, instruction, deterministic=deterministic)
 
-    def _summarise(self, turn: Turn, state: RequirementState) -> None:
+    def _summarise(self, turn: Turn, req: Requirement) -> None:
+        """FR-013: show the code-built summary with Confirm / Change options."""
         if turn.conv.state != State.CONFIRMING:
             transition(turn.conv, State.CONFIRMING)
-        text = summary.summary_text(state, turn.lang, turn.conv.minor_alone)
-        turn.replies.append(OutboundMessage(text=text, choices=ft.confirm_choices(turn.lang)))
+        text = summary.summary_text(self.schema, req, turn.lang, turn.conv.minor_alone)
+        turn.replies.append(ft.with_choices(text, ft.choices("confirm", turn.lang), turn.lang))
 
     async def _confirming(self, db: Session, turn: Turn) -> None:
+        """Handle the reply to the summary: confirm, change, or corrected values."""
         conv = turn.conv
-        state = RequirementState.model_validate(conv.collected or {})
+        req = Requirement.from_dict(conv.collected)
         taps = self._taps(turn.items)
         if "confirm:yes" in taps and self._only_taps(turn.items):
-            self._complete(db, turn, state)
+            self._complete(db, turn, req)
             return
         if "confirm:change" in taps and self._only_taps(turn.items):
             transition(conv, State.IN_PROGRESS)
             turn.replies.append(OutboundMessage(text=ft.text("ASK_CHANGE", turn.lang)))
             return
-        extraction = await self._extract(db, turn, state)
+        extraction = await self._extract(db, turn, req)
         if extraction.fields:
-            state, rejected = state.apply(extraction.fields, self.sv.lists, self._now().date())
-            conv.collected = state.model_dump()
-            update_minor_flags(conv, state, extraction.signals, self.sv.lists)
-            if state.is_complete(conv.minor_alone) and not rejected:
-                self._summarise(turn, state)
+            req, rejected = self._apply(conv, req, extraction.fields)
+            update_minor_flags(conv, req, extraction.signals, self.schema)
+            if req.is_complete(self.schema, conv.minor_alone) and not rejected:
+                self._summarise(turn, req)
                 return
             transition(conv, State.IN_PROGRESS)
             await self._collect(db, turn, extraction=ExtractionResult(signals=extraction.signals))
             return
-        if extraction.signals.confirms_summary is True or "confirm:yes" in taps:
-            self._complete(db, turn, state)
-        elif extraction.signals.confirms_summary is False or "confirm:change" in taps:
+        if extraction.signals.confirms_summary is True:
+            self._complete(db, turn, req)
+        elif extraction.signals.confirms_summary is False:
             transition(conv, State.IN_PROGRESS)
             turn.replies.append(OutboundMessage(text=ft.text("ASK_CHANGE", turn.lang)))
         else:
-            self._summarise(turn, state)
+            self._summarise(turn, req)
 
-    def _complete(self, db: Session, turn: Turn, state: RequirementState) -> None:
+    def _complete(self, db: Session, turn: Turn, req: Requirement) -> None:
+        """Record the confirmed lead and send the closing message.
+
+        The lead goes to the outbox in the same transaction as COMPLETED; the outbox job writes
+        it to the sheet exactly once.
+        """
         conv, contact = turn.conv, turn.contact
-        if not state.is_complete(conv.minor_alone):  # defensive: never record an incomplete lead
+        if not req.is_complete(self.schema, conv.minor_alone):  # never record an incomplete lead
             transition(conv, State.IN_PROGRESS)
             turn.replies.append(OutboundMessage(text=ft.text("ASK_CHANGE", turn.lang)))
             return
         now = self._now()
-        lead_id = new_lead_id(now)
-        row = summary.lead_row(
-            lead_id=lead_id,
-            now=now,
-            timezone=self.cfg.ops.timezone,
-            wa_number=contact.wa_number,
-            consent_at=contact.consent_at or now,
-            language=turn.lang,
-            source=conv.source,
-            state=state,
+        sheet = self.schema.sheet
+        lead_id = new_id(sheet.lead_id_prefix, now)
+        values = summary.lead_values(
+            self.schema,
+            req,
+            {
+                "lead_id": lead_id,
+                "created_at": format_ist(now, self.cfg.ops.timezone, sheet.time_format),
+                "whatsapp_number": contact.wa_number,
+                "language": turn.lang,
+                "source": conv.source,
+                "consent_at": format_ist(
+                    contact.consent_at or now, self.cfg.ops.timezone, sheet.time_format
+                ),
+            },
             minor_alone=conv.minor_alone,
         )
-        db.add(LeadOutbox(lead_id=lead_id, conversation_id=conv.id, row=row.model_dump()))
+        db.add(LeadOutbox(lead_id=lead_id, conversation_id=conv.id, row={"values": values}))
         conv.lead_id = lead_id
-        conv.student_key = (state.student_name or "").strip().lower()[:80]
+        conv.student_key = str(req.get(self.schema.student_key_field) or "").strip().lower()[:80]
         transition(conv, State.COMPLETED)
         when = when_team_contacts(now, self.cfg.ops)
-        start = self.cfg.ops.hours_start.strftime("%-I %p")
+        start = ft.display_time(self.cfg.ops.hours_start)
         turn.replies.append(OutboundMessage(text=ft.close_completed(when, turn.lang, start)))
         turn.lead_created = True
         log.info("lead_confirmed", extra={"lead_id": lead_id, "conversation_id": conv.id})
 
     async def _after_completion(self, db: Session, contact, latest, items) -> bool:
-        """A message after a completed lead: a new request, or just a thank-you."""
+        """Handle a message that arrives after a completed lead.
+
+        A new request returns False so a new conversation starts; anything else (e.g. a
+        thank-you) is answered here and returns True.
+        """
         self._attach(db, latest, items)
         turn = Turn(contact, latest, items, lang=contact.language or "en")
-        extraction = await self._extract(db, turn, RequirementState())
+        extraction = await self._extract(db, turn, Requirement())
         if extraction.fields or extraction.signals.new_student:
             db.execute(
                 update(Message)
@@ -345,13 +406,19 @@ class Engine:
         self,
         db: Session,
         turn: Turn,
-        state: RequirementState,
+        req: Requirement,
         instruction: Instruction,
         deterministic: bool,
     ) -> None:
+        """Build the reply for an ASK-type instruction.
+
+        Fixed text where code knows the answer (taps, fee questions, strict redirect); otherwise
+        a model reply with the fixed question as fallback. Tap options are added when a field
+        with buttons is asked on its own.
+        """
         fields = instruction.params.get("fields", [])
-        choices = self._choices(fields, state, turn.lang)
-        fixed_ask = self._fixed_ask(fields, state, turn.lang, instruction.params.get("clarify"))
+        choices = ft.field_choices(fields[0], turn.lang, self.schema) if len(fields) == 1 else []
+        fixed_ask = self._fixed_ask(fields, req, turn.lang, instruction.params.get("clarify"))
         if instruction.kind == "FEES_OR_TUTORS_AND_STEER":
             text = f"{ft.text('FEES_OR_TUTORS', turn.lang)} {fixed_ask}"
         elif instruction.kind == "STRICT_REDIRECT":
@@ -359,26 +426,28 @@ class Engine:
         elif deterministic:
             text = fixed_ask
         else:
-            text = await self._model_reply(db, turn, state, instruction, fallback=fixed_ask)
-        turn.replies.append(OutboundMessage(text=text, choices=choices))
+            text = await self._model_reply(db, turn, req, instruction, fallback=fixed_ask)
+        turn.replies.append(ft.with_choices(text, choices, turn.lang))
 
-    def _fixed_ask(self, fields, state: RequirementState, lang: str, clarify=None) -> str:
-        ask = ft.ask_text(fields, lang, student=state.student_name)
+    def _fixed_ask(self, fields, req: Requirement, lang: str, clarify=None) -> str:
+        """The configured question for ``fields``.
+
+        Preceded by a clarification when some values were rejected.
+        """
+        ask = ft.ask_text(fields, lang, self.schema, req.captured())
         if clarify:
-            return f"{ft.clarify_text(clarify, lang)} {ask}".strip()
+            return f"{ft.clarify_text(clarify, lang, self.schema)} {ask}".strip()
         return ask
 
-    def _choices(self, fields, state: RequirementState, lang: str):
-        if fields == ["mode"]:
-            return ft.mode_choices(lang)
-        if fields == ["board"]:
-            return ft.board_choices(self.sv.lists.boards)
-        return []
-
     async def _model_reply(
-        self, db: Session, turn: Turn, state: RequirementState, instruction: Instruction, fallback
+        self, db: Session, turn: Turn, req: Requirement, instruction: Instruction, fallback
     ) -> str:
-        ctx = self._context(db, turn, state)
+        """Ask the model to phrase the reply.
+
+        Regenerates up to ``llm.max_regenerations`` times if a guard fails, then falls back to
+        the fixed text.
+        """
+        ctx = self._context(db, turn, req)
         tutee_texts = [ln.text for ln in ctx.transcript if ln.role == "tutee"]
         for _ in range(self.cfg.llm.max_regenerations + 1):
             try:
@@ -399,6 +468,7 @@ class Engine:
         return fallback
 
     async def _send(self, db: Session, turn: Turn, message: OutboundMessage) -> None:
+        """Send via the channel and store the outbound message (transcript + cost tracking)."""
         sent = await self.sv.channel.send(turn.contact.wa_number, message)
         queries.store_message(
             db, turn.contact.id, turn.conv.id, sent.id, "out", "text", message.text, self._now()

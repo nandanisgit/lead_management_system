@@ -31,15 +31,18 @@ def kick_outbox(services: Services) -> None:
 
 
 def create_runtime_app(services: Services) -> FastAPI:
+    """App with the engine, debounced dispatcher and scheduler started/stopped with it."""
     engine = Engine(services, on_lead_created=lambda: kick_outbox(services))
     dispatcher = Dispatcher(services, engine)
     scheduler = build_scheduler(services)
 
     async def on_start() -> None:
+        """Begin consuming turns and running scheduled jobs."""
         dispatcher.start()
         scheduler.start()
 
     async def on_stop() -> None:
+        """Stop jobs and finish in-flight turns before exit."""
         scheduler.shutdown(wait=False)
         await dispatcher.drain()
 
@@ -47,17 +50,21 @@ def create_runtime_app(services: Services) -> FastAPI:
 
 
 def create_production_app() -> FastAPI:
-    setup_logging()
-    return create_runtime_app(build_services(get_settings(), Secrets()))
+    """The app uvicorn serves: real adapters from settings, JSON logging without PII."""
+    services = build_services(get_settings(), Secrets())
+    setup_logging(pii_fields=services.schema.pii_fields())
+    return create_runtime_app(services)
 
 
 class LazyApp:
     """ASGI app built on first use, so importing lead_capture.app needs no secrets."""
 
     def __init__(self) -> None:
+        """Nothing is built until the first request."""
         self._app: FastAPI | None = None
 
     async def __call__(self, scope, receive, send):
+        """ASGI entry point: build the real app on first use, then delegate."""
         if self._app is None:
             self._app = create_production_app()
         await self._app(scope, receive, send)

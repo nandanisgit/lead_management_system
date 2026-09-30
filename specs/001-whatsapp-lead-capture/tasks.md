@@ -76,8 +76,8 @@ tested and demonstrated on its own. Every performance/cost number comes from
 
 ### Domain
 
-- [X] T026 [P] Create `config/lists.yaml` with `grade_levels` (`Class 1`…`Class 12`, `Undergraduate`, `Postgraduate`, `Adult`), `boards` (`CBSE`, `ICSE`, `State`, `IB`, `IGCSE`, `University`, `N/A`), `subjects`, `cities` (`Delhi`, `Noida`, `Greater Noida`, `Gurugram`, `Ghaziabad`, `Faridabad`), NCR PIN code ranges, `modes` (`online`, `home`, `either`), `budget_units` (`per_hour`, `per_month`), `goals`, `lead_statuses` (`NEW`, `IN_REVIEW`, `TUTOR_SEARCH`, `MATCHED`, `CLOSED`), `minor_grade_levels` (`Class 1`…`Class 12`, FR-029), `guardian_relationships` (`mother`, `father`, `guardian`, `other`)
-- [X] T027 [P] Implement `src/lead_capture/domain/lists.py` loading and validating `config/lists.yaml` into an `AllowedLists` object
+- [X] T026 [P] Create the allowed-value lists (now `lists:` in `config/requirement.yaml`, see T083) with `grade_levels` (`Class 1`…`Class 12`, `Undergraduate`, `Postgraduate`, `Adult`), `boards` (`CBSE`, `ICSE`, `State`, `IB`, `IGCSE`, `University`, `N/A`), `subjects`, `cities` (`Delhi`, `Noida`, `Greater Noida`, `Gurugram`, `Ghaziabad`, `Faridabad`), NCR PIN code ranges, `modes` (`online`, `home`, `either`), `budget_units` (`per_hour`, `per_month`), `goals`, `lead_statuses` (`NEW`, `IN_REVIEW`, `TUTOR_SEARCH`, `MATCHED`, `CLOSED`), `minor_grade_levels` (`Class 1`…`Class 12`, FR-029), `guardian_relationships` (`mother`, `father`, `guardian`, `other`)
+- [X] T027 [P] Load and validate the allowed values (now part of `RequirementSchema` in `src/lead_capture/domain/schema.py`, see T083)
 - [X] T028 Write failing tests `tests/unit/test_requirement.py` covering every rule in data-model.md "Value object: Requirement" (see T029) including cross-field rules and the `either`-outside-NCR → `online` rule
 - [X] T029 Implement `Requirement` Pydantic model in `src/lead_capture/domain/requirement.py` with these constraints verbatim from data-model.md: `contact_name` "1–60 chars"; `relationship` "`parent` / `student` / `other`"; `student_name` "1–60 chars; defaults to `contact_name` when `relationship = student`"; `grade_level` "one of `lists.grade_levels`"; `board` required "if grade is a school class", "one of `CBSE`, `ICSE`, `State`, `IB`, `IGCSE`; `University` / `N/A` otherwise"; `subjects` "1–5 items from `lists.subjects`"; `mode` "`online` / `home` / `either`"; `area` "if mode ≠ `online`", "2–80 chars"; `city` "if mode ≠ `online`", "one of the six NCR cities"; `pincode` optional "6 digits; if given, must fall in NCR PIN ranges when mode ≠ `online`"; `schedule` "3–120 chars"; `start_date` "`ASAP` or a date from today to +180 days"; `budget_min`, `budget_max` "positive integers in ₹; `min ≤ max`; a single figure sets both"; `budget_unit` "`per_hour` / `per_month`"; `goal` optional "≤ 120 chars"; `sessions_per_week` optional "1–7"; `tutor_preferences` optional "≤ 200 chars"; `level_notes` optional "≤ 300 chars"; `email` optional "valid email"; `guardian_name` "if `minor_alone`" "1–60 chars"; `guardian_relationship` "if `minor_alone`" "`mother` / `father` / `guardian` / `other`"; plus `missing_required()` and `merge(partial)` (latest value wins, invalid values rejected with a reason)
 - [X] T030 [P] Write tests then implement Lead ID `L-YYYYMMDD-XXXX` and Handoff ID `H-YYYYMMDD-XXXX` ("`XXXX` = 4 random base32 chars") in `tests/unit/test_ids.py` and `src/lead_capture/domain/ids.py`
@@ -159,6 +159,14 @@ tested and demonstrated on its own. Every performance/cost number comes from
 - [X] T081 [P] [US1] Write eval scenario `evals/scenarios/us1_minor_alone.yaml`: Class 9 student chatting alone in Hinglish, asks an off-topic question mid-way; expected: guardian details captured, strict redirect, lead marked as minor
 - [X] T082 [P] [US1] Write eval scenario `evals/scenarios/us1_off_topic.yaml`: parent asks about fees and a specific tutor mid-conversation and makes small talk; expected: short fixed answer, steer back, no amount suggested, lead completed
 
+### Review follow-up (2026-09-30): no hard-coding, documentation
+
+- [X] T083 [US1] Define every tutor-requirement field once in `config/requirement.yaml` (types, allowed values, required-when conditions, questions, labels, model hints, summary lines, sheet layout); load and validate it in `src/lead_capture/domain/schema.py`; generic per-type validators in `src/lead_capture/domain/field_types.py`; `Requirement` in `src/lead_capture/domain/requirement.py` driven by config; model tool schema, questions, tap options, summary, lead row, sheet layouts, Lists tab and eval checks generated from it; `config/lists.yaml` removed
+- [X] T084 [US1] Test that a field can be added or removed through config only, and that inconsistent config is rejected, in `tests/unit/test_schema.py`; guard test that no field name is hard-coded in `src/` or `prompts/` in `tests/unit/test_no_hardcoded_fields.py`
+- [X] T085 [US1] Move fixed texts, tap-option titles, list labels, time display format, language and currency markers to `config/messages.yaml` (loaded in `src/lead_capture/conversation/fixed_texts.py`); move remaining eval/sheet tunables to `config/settings.yaml`
+- [X] T086 Document every module, class and function with why it exists; enforce with ruff pydocstyle (Google convention) in `pyproject.toml`
+- [X] T087 Write `docs/coding-guidelines.md` (no hard-coding, adding a field, interfaces, documentation) and link it from `CLAUDE.md`, the constitution (Principle VII, v1.2.0), the PR template and `README.md`
+
 **Checkpoint**: MVP — a real WhatsApp chat produces a correct `NEW` row; US1 tests and evals pass
 
 ---
@@ -171,18 +179,18 @@ tested and demonstrated on its own. Every performance/cost number comes from
 
 ### Tests for User Story 2
 
-- [ ] T083 [P] [US2] Integration test: resume after 2 days → recap of known details, only remaining fields asked; no lead until confirmation, in `tests/integration/test_us2_resume.py`
-- [ ] T084 [P] [US2] Integration test: no reply for `conversation.stalled_after_hours` → `stalled`, nothing in the sheet; tutee writes again → `in_progress`, in `tests/integration/test_us2_stalled.py`
-- [ ] T085 [P] [US2] Integration test: "I also need a tutor for my daughter" after a completed lead → new conversation and second lead; describing the same student again → existing lead recognised, no duplicate, in `tests/integration/test_us2_multiple_students.py`
-- [ ] T086 [P] [US2] Unit test for the window guard (FR-022): a tutee returning after more than 24 hours reopens the window and gets normal replies; any send attempted when `last_inbound_at` is older than `capabilities.window_hours` is dropped and logged as `send_outside_window` (IDs only) and never sent; the engine has no code path that sends a template or starts a conversation, in `tests/unit/test_service_window.py`
+- [ ] T088 [P] [US2] Integration test: resume after 2 days → recap of known details, only remaining fields asked; no lead until confirmation, in `tests/integration/test_us2_resume.py`
+- [ ] T089 [P] [US2] Integration test: no reply for `conversation.stalled_after_hours` → `stalled`, nothing in the sheet; tutee writes again → `in_progress`, in `tests/integration/test_us2_stalled.py`
+- [ ] T090 [P] [US2] Integration test: "I also need a tutor for my daughter" after a completed lead → new conversation and second lead; describing the same student again → existing lead recognised, no duplicate, in `tests/integration/test_us2_multiple_students.py`
+- [ ] T091 [P] [US2] Unit test for the window guard (FR-022): a tutee returning after more than 24 hours reopens the window and gets normal replies; any send attempted when `last_inbound_at` is older than `capabilities.window_hours` is dropped and logged as `send_outside_window` (IDs only) and never sent; the engine has no code path that sends a template or starts a conversation, in `tests/unit/test_service_window.py`
 
 ### Implementation for User Story 2
 
-- [ ] T087 [US2] Implement `student_key` normalisation and active-conversation lookup per (`contact_id`, `student_key`); handle `new_student` signal by opening a new conversation, in `src/lead_capture/conversation/students.py`
-- [ ] T088 [US2] Add `RECAP_AND_CONTINUE` instruction and recap fixed text; engine resumes `stalled` conversations, in `src/lead_capture/conversation/planner.py` and `src/lead_capture/conversation/fixed_texts.py`
-- [ ] T089 [US2] Implement the window guard before every send using `MessagingChannel.capabilities.window_hours` and `last_inbound_at`: inside the window send normally; outside it drop the send and log `send_outside_window` (IDs only), in `src/lead_capture/conversation/engine.py`
-- [ ] T090 [US2] Implement stalled job (every `jobs.stalled_every_minutes`) and register it, in `src/lead_capture/jobs/stalled.py` and `src/lead_capture/jobs/scheduler.py`
-- [ ] T091 [P] [US2] Write eval scenarios `evals/scenarios/us2_*.yaml`: drop-off and resume, two children from one parent, repeated request for the same child
+- [ ] T092 [US2] Implement `student_key` normalisation and active-conversation lookup per (`contact_id`, `student_key`); handle `new_student` signal by opening a new conversation, in `src/lead_capture/conversation/students.py`
+- [ ] T093 [US2] Add `RECAP_AND_CONTINUE` instruction and recap fixed text; engine resumes `stalled` conversations, in `src/lead_capture/conversation/planner.py` and `src/lead_capture/conversation/fixed_texts.py`
+- [ ] T094 [US2] Implement the window guard before every send using `MessagingChannel.capabilities.window_hours` and `last_inbound_at`: inside the window send normally; outside it drop the send and log `send_outside_window` (IDs only), in `src/lead_capture/conversation/engine.py`
+- [ ] T095 [US2] Implement stalled job (every `jobs.stalled_every_minutes`) and register it, in `src/lead_capture/jobs/stalled.py` and `src/lead_capture/jobs/scheduler.py`
+- [ ] T096 [P] [US2] Write eval scenarios `evals/scenarios/us2_*.yaml`: drop-off and resume, two children from one parent, repeated request for the same child
 
 **Checkpoint**: US1 and US2 work independently
 
@@ -196,16 +204,16 @@ tested and demonstrated on its own. Every performance/cost number comes from
 
 ### Tests for User Story 3
 
-- [ ] T092 [P] [US3] Integration test: home tuition in Pune → offer online; accept → lead with mode `online`; decline → `closed` with `close_reason = out_of_area`, no lead, in `tests/integration/test_us3_out_of_area.py`
-- [ ] T093 [P] [US3] Integration test: mode `either` outside NCR → recorded as `online`; PIN code outside NCR ranges with mode ≠ `online` → out-of-area flow, in `tests/integration/test_us3_either_pincode.py`
-- [ ] T094 [P] [US3] Integration test: unsupported language → fixed English + Hindi message; "not interested" / "STOP" → acknowledgement, `closed` (`not_interested` / `opted_out`), no further messages, in `tests/integration/test_us3_language_optout.py`
+- [ ] T097 [P] [US3] Integration test: home tuition in Pune → offer online; accept → lead with mode `online`; decline → `closed` with `close_reason = out_of_area`, no lead, in `tests/integration/test_us3_out_of_area.py`
+- [ ] T098 [P] [US3] Integration test: mode `either` outside NCR → recorded as `online`; PIN code outside NCR ranges with mode ≠ `online` → out-of-area flow, in `tests/integration/test_us3_either_pincode.py`
+- [ ] T099 [P] [US3] Integration test: unsupported language → fixed English + Hindi message; "not interested" / "STOP" → acknowledgement, `closed` (`not_interested` / `opted_out`), no further messages, in `tests/integration/test_us3_language_optout.py`
 
 ### Implementation for User Story 3
 
-- [ ] T095 [US3] Implement `OFFER_ONLINE_OUT_OF_AREA` flow and `accepts_online` handling in `src/lead_capture/conversation/planner.py` and `src/lead_capture/conversation/engine.py`
-- [ ] T096 [P] [US3] Implement `LANGUAGE_UNSUPPORTED` fixed text (both languages) and `other` language handling in `src/lead_capture/conversation/fixed_texts.py`
-- [ ] T097 [US3] Implement close transitions with `close_reason` (`not_interested`, `opted_out`, `out_of_area`) and suppression of further sends, in `src/lead_capture/conversation/states.py`
-- [ ] T098 [P] [US3] Write eval scenarios `evals/scenarios/us3_*.yaml`: Pune home → accepts online, Pune home → declines, Tamil opener (fixed line), "not interested", "STOP" (fixed line)
+- [ ] T100 [US3] Implement `OFFER_ONLINE_OUT_OF_AREA` flow and `accepts_online` handling in `src/lead_capture/conversation/planner.py` and `src/lead_capture/conversation/engine.py`
+- [ ] T101 [P] [US3] Implement `LANGUAGE_UNSUPPORTED` fixed text (both languages) and `other` language handling in `src/lead_capture/conversation/fixed_texts.py`
+- [ ] T102 [US3] Implement close transitions with `close_reason` (`not_interested`, `opted_out`, `out_of_area`) and suppression of further sends, in `src/lead_capture/conversation/states.py`
+- [ ] T103 [P] [US3] Write eval scenarios `evals/scenarios/us3_*.yaml`: Pune home → accepts online, Pune home → declines, Tamil opener (fixed line), "not interested", "STOP" (fixed line)
 
 **Checkpoint**: US1–US3 work independently
 
@@ -219,16 +227,16 @@ tested and demonstrated on its own. Every performance/cost number comes from
 
 ### Tests for User Story 4
 
-- [ ] T099 [P] [US4] Integration test: handoff on request, after `conversation.misunderstand_handoff_threshold` consecutive misunderstandings, and on complaint/sensitive signal → `handed_over`, one `Handoffs` row, no automated replies afterwards; acknowledgement says "after 10 AM" outside ops hours; the row's Reply By = tutee's last message + 24 h and moves forward when the tutee writes again during the handoff, in `tests/integration/test_us4_handoff.py`
-- [ ] T100 [P] [US4] Integration test: echoes from the Business app stored as `direction = echo` and never trigger a bot turn; row marked `Resolved` or `conversation.handoff_expiry_hours` elapsed → bot resumes, in `tests/integration/test_us4_resolution.py`
-- [ ] T101 [P] [US4] Extend `lead_repository_suite` and Google Sheet contract test for `append_handoff` (A–H incl. Reply By = last inbound + 24 h), `update_handoff_reply_by` (column H only), `resolved_handoffs` (column I = `Resolved`) in `tests/contract/lead_repository_suite.py` and `tests/contract/test_google_sheet_repository.py`
+- [ ] T104 [P] [US4] Integration test: handoff on request, after `conversation.misunderstand_handoff_threshold` consecutive misunderstandings, and on complaint/sensitive signal → `handed_over`, one `Handoffs` row, no automated replies afterwards; acknowledgement says "after 10 AM" outside ops hours; the row's Reply By = tutee's last message + 24 h and moves forward when the tutee writes again during the handoff, in `tests/integration/test_us4_handoff.py`
+- [ ] T105 [P] [US4] Integration test: echoes from the Business app stored as `direction = echo` and never trigger a bot turn; row marked `Resolved` or `conversation.handoff_expiry_hours` elapsed → bot resumes, in `tests/integration/test_us4_resolution.py`
+- [ ] T106 [P] [US4] Extend `lead_repository_suite` and Google Sheet contract test for `append_handoff` (A–H incl. Reply By = last inbound + 24 h), `update_handoff_reply_by` (column H only), `resolved_handoffs` (column I = `Resolved`) in `tests/contract/lead_repository_suite.py` and `tests/contract/test_google_sheet_repository.py`
 
 ### Implementation for User Story 4
 
-- [ ] T102 [US4] Implement handoff triggers, `misunderstand_streak` tracking, `HANDOFF_ACK(when)` text, `handed_over` state and Reply By updates (`update_handoff_reply_by`) on new tutee messages during a handoff in `src/lead_capture/conversation/handoff.py` and `src/lead_capture/conversation/states.py`
-- [ ] T103 [US4] Implement `Handoffs` tab methods in `src/lead_capture/adapters/leads/google_sheet.py` and `src/lead_capture/adapters/leads/in_memory.py`
-- [ ] T104 [US4] Implement handoff sync job (every `jobs.handoff_sync_every_minutes`, plus expiry) and register it, in `src/lead_capture/jobs/handoffs.py` and `src/lead_capture/jobs/scheduler.py`
-- [ ] T105 [P] [US4] Write eval scenarios `evals/scenarios/us4_*.yaml`: explicit request, repeated nonsense, complaint
+- [ ] T107 [US4] Implement handoff triggers, `misunderstand_streak` tracking, `HANDOFF_ACK(when)` text, `handed_over` state and Reply By updates (`update_handoff_reply_by`) on new tutee messages during a handoff in `src/lead_capture/conversation/handoff.py` and `src/lead_capture/conversation/states.py`
+- [ ] T108 [US4] Implement `Handoffs` tab methods in `src/lead_capture/adapters/leads/google_sheet.py` and `src/lead_capture/adapters/leads/in_memory.py`
+- [ ] T109 [US4] Implement handoff sync job (every `jobs.handoff_sync_every_minutes`, plus expiry) and register it, in `src/lead_capture/jobs/handoffs.py` and `src/lead_capture/jobs/scheduler.py`
+- [ ] T110 [P] [US4] Write eval scenarios `evals/scenarios/us4_*.yaml`: explicit request, repeated nonsense, complaint
 
 **Checkpoint**: US1–US4 work independently
 
@@ -242,16 +250,16 @@ tested and demonstrated on its own. Every performance/cost number comes from
 
 ### Tests for User Story 5
 
-- [ ] T106 [P] [US5] Integration test: consent declined → `closed` (`declined_consent`), no requirement fields stored, no lead; consent message mentions retention periods from settings, in `tests/integration/test_us5_consent.py`
-- [ ] T107 [P] [US5] Integration test: "please delete my data" → contact's conversations, messages, outbox rows and sheet rows (via `LeadRepository.delete_lead`) removed, confirmation sent, in `tests/integration/test_us5_deletion.py`
-- [ ] T108 [P] [US5] Integration test with frozen clock: messages older than `retention.transcript_days`, leads and conversations older than `retention.lead_days` (local store and sheet), handoff rows older than `retention.handoff_days`, orphan contacts — deleted; newer rows kept, in `tests/integration/test_us5_retention.py`
+- [ ] T111 [P] [US5] Integration test: consent declined → `closed` (`declined_consent`), no requirement fields stored, no lead; consent message mentions retention periods from settings, in `tests/integration/test_us5_consent.py`
+- [ ] T112 [P] [US5] Integration test: "please delete my data" → contact's conversations, messages, outbox rows and sheet rows (via `LeadRepository.delete_lead`) removed, confirmation sent, in `tests/integration/test_us5_deletion.py`
+- [ ] T113 [P] [US5] Integration test with frozen clock: messages older than `retention.transcript_days`, leads and conversations older than `retention.lead_days` (local store and sheet), handoff rows older than `retention.handoff_days`, orphan contacts — deleted; newer rows kept, in `tests/integration/test_us5_retention.py`
 
 ### Implementation for User Story 5
 
-- [ ] T109 [US5] Implement `awaiting_consent` gate (no extraction or storage of fields before consent; consent via choices or text) in `src/lead_capture/conversation/engine.py` and `src/lead_capture/conversation/states.py`
-- [ ] T110 [US5] Implement deletion-request handling in `src/lead_capture/conversation/privacy.py`
-- [ ] T111 [US5] Implement retention job on `jobs.retention_cron` and register it; expose as `lead-capture jobs retention`, in `src/lead_capture/jobs/retention.py`, `src/lead_capture/jobs/scheduler.py` and `src/lead_capture/cli.py`
-- [ ] T112 [P] [US5] Write eval scenarios `evals/scenarios/us5_*.yaml`: declines consent, asks for deletion after confirming
+- [ ] T114 [US5] Implement `awaiting_consent` gate (no extraction or storage of fields before consent; consent via choices or text) in `src/lead_capture/conversation/engine.py` and `src/lead_capture/conversation/states.py`
+- [ ] T115 [US5] Implement deletion-request handling in `src/lead_capture/conversation/privacy.py`
+- [ ] T116 [US5] Implement retention job on `jobs.retention_cron` and register it; expose as `lead-capture jobs retention`, in `src/lead_capture/jobs/retention.py`, `src/lead_capture/jobs/scheduler.py` and `src/lead_capture/cli.py`
+- [ ] T117 [P] [US5] Write eval scenarios `evals/scenarios/us5_*.yaml`: declines consent, asks for deletion after confirming
 
 **Checkpoint**: all five user stories work independently
 
@@ -261,21 +269,21 @@ tested and demonstrated on its own. Every performance/cost number comes from
 
 **Purpose**: edge cases, costs, load testing, deployment, release checks
 
-- [ ] T113 [P] Integration test then implementation: non-text messages (voice note, image, sticker, document) → `ASK_FOR_TEXT` fixed text (FR-028), in `tests/integration/test_non_text.py` and `src/lead_capture/conversation/fixed_texts.py`
-- [ ] T114 [P] Integration test: contradictory later value replaces earlier; unknown board/class → clarifying question, in `tests/integration/test_edge_cases.py`
-- [ ] T115 [P] Create `config/rates.yaml` (WhatsApp per-message rates by category incl. 1,000 free service messages/month and 18% GST; Anthropic per-million-token rates for Sonnet 5.5 and Haiku 4.5 incl. cache read/write) from research.md R15
-- [ ] T116 Write tests then implement `lead-capture costs --month YYYY-MM` summarising messages and tokens per conversation and per lead from `UsageEvent` and `config/rates.yaml`, in `tests/unit/test_costs.py`, `src/lead_capture/costs/report.py` and `src/lead_capture/cli.py`
-- [ ] T117 [P] Implement `StubLLMClient` (random delay from settings, canned valid results, passes `llm_client_suite`) in `src/lead_capture/adapters/llm/stub.py`
-- [ ] T118 [P] Implement signed webhook payload builder for load tests in `load/signing.py`
-- [ ] T119 Implement Locust profiles `capacity`, `burst`, `soak` (parameters from `load.*` settings; simulated tutee drives full conversations; reconciliation of confirmed leads vs sheet rows; report with latency percentiles, errors, effective settings and cost to `load/reports/<timestamp>.md`) in `load/locustfile.py`, and wire `lead-capture load --profile` in `src/lead_capture/cli.py`
-- [ ] T120 [P] Add remaining eval scenarios (voice note placeholder, burst of quick messages, replayed duplicate) and set `evals.pr_subset` to 8 key scenarios in `evals/scenarios/` and `config/settings.yaml`
-- [ ] T121 [P] Create `Dockerfile` (python 3.12 slim, uv, non-root user, `data/` volume, `alembic upgrade head` then uvicorn) and `docker-compose.yml` for local runs
-- [ ] T122 [P] Write deployment notes (HTTPS via Caddy, Meta webhook setup, coexistence onboarding check, service-account sharing, INR billing before 31 Dec 2026) in `docs/deploy.md`
-- [ ] T123 [P] Update `README.md` and `CLAUDE.md` commands if any changed during build
-- [ ] T124 Audit: grep that no module outside `src/lead_capture/adapters/` imports `anthropic`, `googleapiclient`, `google.oauth2` or WhatsApp URLs, and that no numeric performance/cost literals exist outside `config/settings.yaml` (add as a test in `tests/unit/test_architecture.py`)
-- [ ] T125 Audit logs for personal data by running the full test suite with a log-capturing fixture that fails on phone numbers, names or message bodies, in `tests/integration/test_no_pii_in_logs.py`
-- [ ] T126 Run quickstart.md validation scenarios 1–13 against a test WhatsApp number and test sheet; record results in `specs/001-whatsapp-lead-capture/checklists/release.md`
-- [ ] T127 Run full eval suite and `capacity`, `burst`, `soak` load profiles; attach reports and confirm SC-001–SC-008 thresholds in `specs/001-whatsapp-lead-capture/checklists/release.md`
+- [ ] T118 [P] Integration test then implementation: non-text messages (voice note, image, sticker, document) → `ASK_FOR_TEXT` fixed text (FR-028), in `tests/integration/test_non_text.py` and `src/lead_capture/conversation/fixed_texts.py`
+- [ ] T119 [P] Integration test: contradictory later value replaces earlier; unknown board/class → clarifying question, in `tests/integration/test_edge_cases.py`
+- [ ] T120 [P] Create `config/rates.yaml` (WhatsApp per-message rates by category incl. 1,000 free service messages/month and 18% GST; Anthropic per-million-token rates for Sonnet 5.5 and Haiku 4.5 incl. cache read/write) from research.md R15
+- [ ] T121 Write tests then implement `lead-capture costs --month YYYY-MM` summarising messages and tokens per conversation and per lead from `UsageEvent` and `config/rates.yaml`, in `tests/unit/test_costs.py`, `src/lead_capture/costs/report.py` and `src/lead_capture/cli.py`
+- [ ] T122 [P] Implement `StubLLMClient` (random delay from settings, canned valid results, passes `llm_client_suite`) in `src/lead_capture/adapters/llm/stub.py`
+- [ ] T123 [P] Implement signed webhook payload builder for load tests in `load/signing.py`
+- [ ] T124 Implement Locust profiles `capacity`, `burst`, `soak` (parameters from `load.*` settings; simulated tutee drives full conversations; reconciliation of confirmed leads vs sheet rows; report with latency percentiles, errors, effective settings and cost to `load/reports/<timestamp>.md`) in `load/locustfile.py`, and wire `lead-capture load --profile` in `src/lead_capture/cli.py`
+- [ ] T125 [P] Add remaining eval scenarios (voice note placeholder, burst of quick messages, replayed duplicate) and set `evals.pr_subset` to 8 key scenarios in `evals/scenarios/` and `config/settings.yaml`
+- [ ] T126 [P] Create `Dockerfile` (python 3.12 slim, uv, non-root user, `data/` volume, `alembic upgrade head` then uvicorn) and `docker-compose.yml` for local runs
+- [ ] T127 [P] Write deployment notes (HTTPS via Caddy, Meta webhook setup, coexistence onboarding check, service-account sharing, INR billing before 31 Dec 2026) in `docs/deploy.md`
+- [ ] T128 [P] Update `README.md` and `CLAUDE.md` commands if any changed during build
+- [ ] T129 Architecture audit test in `tests/unit/test_architecture.py`: no module outside `src/lead_capture/adapters/` imports `anthropic`, `google`, `httpx` Sheets/WhatsApp URLs; no numeric performance/cost literals outside `config/settings.yaml`; no requirement field name from `config/requirement.yaml` appears as a string literal in `src/` or `prompts/` (docs/coding-guidelines.md §1)
+- [ ] T130 Audit logs for personal data by running the full test suite with a log-capturing fixture that fails on phone numbers, names or message bodies, in `tests/integration/test_no_pii_in_logs.py`
+- [ ] T131 Run quickstart.md validation scenarios 1–13 against a test WhatsApp number and test sheet; record results in `specs/001-whatsapp-lead-capture/checklists/release.md`
+- [ ] T132 Run full eval suite and `capacity`, `burst`, `soak` load profiles; attach reports and confirm SC-001–SC-008 thresholds in `specs/001-whatsapp-lead-capture/checklists/release.md`
 
 ---
 
@@ -286,7 +294,7 @@ tested and demonstrated on its own. Every performance/cost number comes from
 - **Setup (Phase 1)** → **Foundational (Phase 2)** → user stories.
 - **US1 (Phase 3)** depends only on Foundational. It is the MVP.
 - **US2–US5 (Phases 4–7)** depend on Foundational and on the US1 engine, channel and repository (T057–T075). After US1 they are independent of each other and can proceed in parallel or in priority order.
-- **Polish (Phase 8)** after the stories it touches; T126–T127 last (release gate).
+- **Polish (Phase 8)** after the stories it touches; T131–T132 last (release gate).
 
 ### Within each phase
 
@@ -325,7 +333,7 @@ Evals:  T080, T081, T082 in parallel with T077–T079
 ### After US1
 
 ```text
-US2 (T083–T091) | US3 (T092–T098) | US4 (T099–T105) | US5 (T106–T112)
+US2 (T088–T096) | US3 (T097–T103) | US4 (T104–T110) | US5 (T111–T117)
 ```
 
 ## Implementation Strategy
@@ -340,7 +348,7 @@ US2 (T083–T091) | US3 (T092–T098) | US4 (T099–T105) | US5 (T106–T112)
 
 - Add US2 → validate → demo; then US3, US4, US5 in priority order (or in parallel after US1).
 - Each story ends with its tests, evals and checkpoint passing.
-- Polish and release checks (T126–T127) gate the first production deploy.
+- Polish and release checks (T131–T132) gate the first production deploy.
 
 ### Commit and PR convention
 
@@ -352,5 +360,5 @@ US2 (T083–T091) | US3 (T092–T098) | US4 (T099–T105) | US5 (T106–T112)
 
 - `[P]` tasks touch different files and have no unfinished dependency.
 - Every new tunable number goes into `config/settings.yaml` with a validated default (Principle VI).
-- No vendor SDK imports outside `src/lead_capture/adapters/` (checked by T124).
+- No vendor SDK imports outside `src/lead_capture/adapters/` (checked by T129).
 - Stop at any checkpoint to validate the story on its own.

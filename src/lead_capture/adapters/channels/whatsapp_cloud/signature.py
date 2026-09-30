@@ -10,6 +10,7 @@ from lead_capture.ports.channel import SignatureError
 
 
 def verify(headers: Mapping[str, str], body: bytes, app_secret: str | None) -> None:
+    """Raise SignatureError unless X-Hub-Signature-256 is the body's HMAC with the app secret."""
     if not app_secret:
         raise SignatureError("WA_APP_SECRET not configured")
     lowered = {k.lower(): v for k, v in headers.items()}

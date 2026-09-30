@@ -1,7 +1,10 @@
 import json
 import logging
 
-from lead_capture.logging import JsonFormatter, PiiFilter
+from lead_capture.domain.schema import get_schema
+from lead_capture.logging import JsonFormatter, PiiFilter, register_pii_fields
+
+register_pii_fields(get_schema().pii_fields())
 
 
 def render(msg, *args, **extra):

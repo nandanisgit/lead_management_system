@@ -47,10 +47,16 @@ async def test_up_to_three_choices_become_buttons(respx_mock):
 async def test_four_to_ten_choices_become_list(respx_mock):
     route = respx_mock.post(URL).respond(200, json={"messages": [{"id": "x"}]})
     boards = ["CBSE", "ICSE", "State", "IB", "IGCSE"]
-    msg = OutboundMessage(text="Board?", choices=[Choice(id=f"board:{b}", title=b) for b in boards])
+    msg = OutboundMessage(
+        text="Board?",
+        choices=[Choice(id=f"board:{b}", title=b) for b in boards],
+        list_button="Chuniye",
+        list_section="Vikalp",
+    )
     await channel().send("+919999900001", msg)
     inter = sent_json(route)["interactive"]
-    assert inter["type"] == "list"
+    assert inter["type"] == "list" and inter["action"]["button"] == "Chuniye"
+    assert inter["action"]["sections"][0]["title"] == "Vikalp"
     assert [r["id"] for r in inter["action"]["sections"][0]["rows"]] == [
         f"board:{b}" for b in boards
     ]

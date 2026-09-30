@@ -7,7 +7,6 @@ from datetime import datetime
 
 from lead_capture.adapters.channels.fake import FakeChannel
 from lead_capture.adapters.clock import FrozenClock
-from lead_capture.adapters.leads.in_memory import InMemoryLeadRepository
 from lead_capture.adapters.llm.fake import FakeLLMClient
 from lead_capture.conversation.dispatcher import Dispatcher
 from lead_capture.conversation.engine import Engine
@@ -17,6 +16,7 @@ from lead_capture.ports.channel import InboundMessage
 from lead_capture.ports.llm import ExtractionResult, Signals
 from lead_capture.services import build_services
 from lead_capture.settings import load_settings
+from tests.conftest import memory_repo
 
 NUMBER = "+919999900001"
 _ids = itertools.count(1)
@@ -35,7 +35,7 @@ class Harness:
             default_reply=lambda turn, ins: f"MODEL {ins.kind} {ins.params.get('fields')}"
         )
         self.channel = FakeChannel()
-        self.leads = leads or InMemoryLeadRepository()
+        self.leads = leads or memory_repo()
         self.clock = FrozenClock(at)
         self.sv = build_services(
             self.settings,
@@ -83,6 +83,10 @@ class Harness:
 
     def leads_rows(self) -> list[list]:
         return self.leads.leads
+
+    def cell(self, row: list, header: str):
+        """A lead cell by header name (tests never rely on column positions)."""
+        return row[self.sv.schema.leads_layout().index(header)]
 
 
 async def to_summary(h: Harness, lang="en") -> None:

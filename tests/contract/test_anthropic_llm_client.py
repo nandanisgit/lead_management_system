@@ -4,9 +4,9 @@ import anthropic
 import httpx2
 import pytest
 
-from lead_capture.adapters.llm.anthropic import TOOL, AnthropicLLMClient
+from lead_capture.adapters.llm.anthropic import TOOL_NAME, AnthropicLLMClient, build_tool
+from lead_capture.domain.schema import get_schema
 from lead_capture.ports.llm import (
-    EXTRACTABLE_FIELDS,
     Instruction,
     Signals,
     TranscriptLine,
@@ -47,7 +47,14 @@ class FakeSDK:
 
 def client(sdk=None, **llm):
     s = load_settings(llm={"max_retries": 0, **llm})
-    return AnthropicLLMClient(s.llm, api_key="test-key", client=sdk or FakeSDK())
+    return AnthropicLLMClient(
+        s.llm,
+        api_key="test-key",
+        fields_schema=get_schema().llm_fields_schema(),
+        max_questions=s.conversation.max_questions_per_message,
+        max_words=s.conversation.max_words_per_message,
+        client=sdk or FakeSDK(),
+    )
 
 
 def factory(scenario):
@@ -59,11 +66,14 @@ async def test_llm_client_suite(check):
     await check(factory)
 
 
-def test_tool_schema_matches_contract():
-    props = TOOL["input_schema"]["properties"]
-    assert set(props["fields"]["properties"]) == set(EXTRACTABLE_FIELDS)
+def test_tool_schema_generated_from_config():
+    schema = get_schema()
+    tool = build_tool(schema.llm_fields_schema())
+    props = tool["input_schema"]["properties"]
+    assert set(props["fields"]["properties"]) == set(schema.field_names())
+    assert props["fields"]["properties"]["mode"]["enum"] == schema.options("mode")
     assert set(props["signals"]["properties"]) == set(Signals.model_fields)
-    assert TOOL["name"] == "record_requirements"
+    assert tool["name"] == TOOL_NAME == "record_requirements"
 
 
 async def test_extraction_request_uses_settings():

@@ -14,6 +14,8 @@ ACTIVE_STATES = ("awaiting_consent", "in_progress", "confirming", "stalled", "ha
 
 
 class Contact(Base):
+    """One WhatsApp user: consent time, language, rate-limit state."""
+
     __tablename__ = "contacts"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
@@ -29,6 +31,8 @@ class Contact(Base):
 
 
 class Conversation(Base):
+    """One requirement being gathered for one student, with its lifecycle state."""
+
     __tablename__ = "conversations"
     __table_args__ = (
         # at most one active conversation per contact + student (FR-021)
@@ -54,7 +58,7 @@ class Conversation(Base):
     misunderstand_streak: Mapped[int] = mapped_column(Integer, default=0)
     minor_alone: Mapped[bool] = mapped_column(Boolean, default=False)
     consent_by_minor: Mapped[bool] = mapped_column(Boolean, default=False)
-    source: Mapped[str] = mapped_column(String(64), default="organic")
+    source: Mapped[str] = mapped_column(String(64))  # always set by the engine (config)
     lead_id: Mapped[str | None] = mapped_column(String(24))
     first_inbound_at: Mapped[datetime | None] = mapped_column(UTCDateTime)
     last_inbound_at: Mapped[datetime | None] = mapped_column(UTCDateTime)
@@ -64,6 +68,8 @@ class Conversation(Base):
 
 
 class Message(Base):
+    """Transcript entry, kept for retention.transcript_days; dedupe key is the channel ID."""
+
     __tablename__ = "messages"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
@@ -79,6 +85,8 @@ class Message(Base):
 
 
 class LeadOutbox(Base):
+    """Confirmed lead waiting to be written (or already written) to the lead register."""
+
     __tablename__ = "lead_outbox"
 
     lead_id: Mapped[str] = mapped_column(String(24), primary_key=True)

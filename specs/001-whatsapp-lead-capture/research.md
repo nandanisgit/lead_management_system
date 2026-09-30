@@ -200,16 +200,26 @@ be re-checked against current documentation during the Build stage.
   PaaS such as Render/Railway — acceptable alternative if a managed host is
   preferred.
 
-## R12. Allowed values
+## R12. Requirement fields and allowed values — one config file
 
-- **Decision**: Allowed values (class levels, boards, subjects, NCR cities,
-  modes, budget units, lead statuses) live in `config/lists.yaml` in the repo
-  and are mirrored into the sheet's `Lists` tab by a CLI command. Code reads the
-  YAML; the sheet copy exists for ops dropdowns.
-- **Rationale**: Reviewed in git (visible stage history), versioned with the
-  validator that depends on them.
-- **Alternatives considered**: reading lists from the sheet at runtime (ops
-  edits could silently break validation).
+- **Decision**: every tutor-requirement field is defined once, in `config/requirement.yaml`:
+  type and parameters, allowed values (`lists:`), when it is required (a small condition
+  language), labels and questions (en/hi), the model's field description, summary lines and
+  the Google Sheet column layout (Leads, Handoffs, Lists tabs). At start-up the file is
+  validated for internal consistency (unknown fields, lists or placeholders, ops columns
+  not last, missing type parameters) and the service refuses to start if it is wrong.
+  Generated from it: validation (`Requirement.apply` + `field_types.py`), the extraction
+  tool's `fields` schema, the questions and tap options, the confirmation summary, the lead
+  row, the sheet header check, the Lists tab and the eval checks. Fixed user-facing texts
+  and language/currency markers live in `config/messages.yaml`.
+- **Rationale**: adding or removing a field used to mean editing validation, prompt schema,
+  questions, summary, sheet mapping and evals separately (review, 30 Sep 2026). One file
+  makes it a config change, reviewed in git; a test proves a field can be added without
+  code (`tests/unit/test_schema.py`). Constitution Principle VII; procedure in
+  `docs/coding-guidelines.md`.
+- **Alternatives considered**: reading lists from the sheet at runtime (ops edits could
+  silently break validation); a database-backed form builder (overkill for v1; the config
+  file can later be served from a database without changing consumers).
 
 ## R13. Load and performance testing
 
@@ -425,9 +435,9 @@ conversation engine.
 
 | Interface | Responsibility | v1 adapter | Test adapter | Later options |
 |---|---|---|---|---|
-| `LLMClient` | `extract(turn) -> ExtractionResult`; `write_reply(turn, instruction) -> str`; reports token usage | `AnthropicLLMClient` | `FakeLLMClient` (scripted), `StubLLMClient` (delay only, for load tests) | Claude via AWS Bedrock / Google Vertex; another provider |
+| `LLMClient` | `extract(turn) -> ExtractionResult`; `write_reply(turn, instruction) -> str`; reports token usage; field schema given by config (R12) | `AnthropicLLMClient` | `FakeLLMClient` (scripted), `StubLLMClient` (delay only, for load tests) | Claude via AWS Bedrock / Google Vertex; another provider |
 | `MessagingChannel` | parse and verify inbound webhooks into normalised `InboundMessage`s; `send_text`, `send_choices` (buttons/list); declares `capabilities` (max buttons, template rules, service window) | `WhatsAppCloudChannel` | `FakeChannel` | Telegram, Instagram DM, web chat, SMS; a WhatsApp BSP |
-| `LeadRepository` | append/find/delete leads, handoff rows, lists sync (contract in `contracts/lead-sheet.md`) | `GoogleSheetLeadRepository` | `InMemoryLeadRepository` | PostgreSQL, Zoho / HubSpot / Salesforce CRM |
+| `LeadRepository` | append/find/delete leads, handoff rows, lists sync; column layout (`SheetLayout`) from config (contract in `contracts/lead-sheet.md`) | `GoogleSheetLeadRepository` | `InMemoryLeadRepository` | PostgreSQL, Zoho / HubSpot / Salesforce CRM |
 | `TurnQueue` | deliver turns in order per contact | in-process asyncio | same | Redis Streams, SQS FIFO, Cloud Tasks |
 | `ConversationLock` | one turn at a time per contact | in-memory | same | PostgreSQL advisory lock, Redis |
 | `Clock` | current time in the configured time zone | system clock | frozen clock | — |
@@ -463,6 +473,7 @@ load-test reports print the effective settings.
 
 | Group | Key | Default | Why this default |
 |---|---|---|---|
+| **Config files** | `schema_files.requirement_file` / `schema_files.messages_file` | `config/requirement.yaml` / `config/messages.yaml` | R12 |
 | **LLM** | `llm.provider` | `anthropic` | R2 |
 | | `llm.extraction_model` | `claude-haiku-4-5` | structured extraction works well on a small model; ≈ −25% cost (R15) |
 | | `llm.reply_model` | `claude-sonnet-5-5` | replies are what tutees judge |
@@ -488,18 +499,18 @@ load-test reports print the effective settings.
 | | `channel.send_timeout_seconds` / `channel.max_retries` / `channel.retry_backoff_seconds` | `5` / `3` / `0.5` | contract `whatsapp-webhook.md` |
 | **Leads** | `leads.repository` | `google_sheet` | R5 |
 | | `leads.outbox_interval_seconds` | `60` | R6/R9 |
-| | `leads.max_backoff_seconds` / `leads.retry_base_seconds` | `300` / `5` | R5 |
+| | `leads.max_backoff_seconds` / `leads.retry_base_seconds` / `leads.request_timeout_seconds` | `300` / `5` / `15` | R5 |
 | **Operations** | `ops.timezone` / `ops.hours_start` / `ops.hours_end` | `Asia/Kolkata` / `10:00` / `17:00` | intent |
 | **Retention** | `retention.transcript_days` / `retention.lead_days` / `retention.handoff_days` | `90` / `365` / `90` | intent / FR-026 |
 | **Jobs** | `jobs.stalled_every_minutes` / `jobs.handoff_sync_every_minutes` / `jobs.retention_cron` | `15` / `5` / `0 3 * * *` | R9 |
 | **Costs** | `costs.rates_file` / `costs.usd_to_inr` | `config/rates.yaml` / `88` | R15 |
 | **Evals** | `evals.repeats` / `evals.pass_threshold` / `evals.tutee_model` / `evals.pr_subset` | `3` / `0.95` / `claude-haiku-4-5` / 8 key scenarios, 1 run each | R10; full suite nightly and before release |
+| | `evals.max_turns` / `evals.tutee_max_tokens` / `evals.simulated_time` | `20` / `150` / `15:00` | R10 |
 | **Load** | `load.burst.concurrent_tutees` / `load.burst.peak_msgs_per_second` / `load.burst.minutes` | `30` / `5` / `10` | R13 |
 
-Business rules that are product decisions (serviceable cities, languages,
-required fields, allowed values) stay in `config/lists.yaml` and `intent.md`,
-not in this file — changing them needs the approval described in the
-constitution.
+Requirement fields, allowed values and the sheet layout live in `config/requirement.yaml`
+(R12), fixed texts in `config/messages.yaml` — not in this file. Changing which fields are
+required is a product decision that needs the approval described in the constitution.
 
 ### Cost optimisations and how they map to settings
 

@@ -13,6 +13,8 @@ from pydantic import BaseModel, Field
 
 
 class InboundMessage(BaseModel):
+    """A tutee message (or Business-app echo) in channel-neutral form."""
+
     id: str  # channel message ID (dedupe key)
     contact: str  # E.164 number or channel user ID
     type: Literal["text", "interactive", "unsupported"]
@@ -25,20 +27,35 @@ class InboundMessage(BaseModel):
 
 
 class Choice(BaseModel):
+    """A tap option (button or list row): ``id`` comes back when tapped."""
+
     id: str
     title: str
 
 
 class OutboundMessage(BaseModel):
+    """A reply: text plus optional tap options.
+
+    ``list_button`` / ``list_section`` are the labels a channel shows when the options are
+    rendered as a list (WhatsApp: the button that opens it and the section title); they are
+    user-facing copy, so the engine fills them from config/messages.yaml.
+    """
+
     text: str
     choices: list[Choice] = Field(default_factory=list)
+    list_button: str | None = None
+    list_section: str | None = None
 
 
 class SentMessage(BaseModel):
+    """The channel's ID for a sent message (stored in the transcript)."""
+
     id: str
 
 
 class Capabilities(BaseModel):
+    """What a channel supports, so the engine never assumes WhatsApp."""
+
     max_buttons: int
     max_list_rows: int
     has_service_window: bool
@@ -55,7 +72,10 @@ class SignatureError(Exception):
 
 @runtime_checkable
 class MessagingChannel(Protocol):
+    """A messaging app as the engine needs it (research R16)."""
+
     name: str
+    path_name: str  # URL segment: /webhooks/{path_name}
     capabilities: Capabilities
 
     def verify_subscription(self, params: Mapping[str, str]) -> str | None:
@@ -64,7 +84,9 @@ class MessagingChannel(Protocol):
     def parse_inbound(self, headers: Mapping[str, str], body: bytes) -> list[InboundMessage]:
         """Verify authenticity (raise SignatureError) and normalise the payload."""
 
-    async def send(self, to: str, message: OutboundMessage) -> SentMessage: ...
+    async def send(self, to: str, message: OutboundMessage) -> SentMessage:
+        """Send a reply to ``to``; return the channel's message ID."""
+        ...
 
 
 def as_numbered_text(message: OutboundMessage) -> OutboundMessage:
@@ -76,6 +98,7 @@ def as_numbered_text(message: OutboundMessage) -> OutboundMessage:
 
 
 def fit_to_capabilities(message: OutboundMessage, caps: Capabilities) -> OutboundMessage:
+    """Degrade choices to numbered text when there are more than the channel can show."""
     limit = max(caps.max_buttons, caps.max_list_rows)
     if message.choices and len(message.choices) > limit:
         return as_numbered_text(message)
