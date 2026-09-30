@@ -136,6 +136,8 @@ class FieldSpec(_Strict):
     # FR-032: pre-filled from the channel when its address is a phone number (WhatsApp),
     # otherwise asked with the channel's "share phone number" control where it has one
     channel_phone: bool = False
+    # FR-033: pre-filled from the chat app's profile name (shown in the summary to correct)
+    channel_name: bool = False
 
     @model_validator(mode="after")
     def _type_params(self) -> FieldSpec:
@@ -444,6 +446,10 @@ class RequirementSchema(_Strict):
     def channel_phone_fields(self) -> list[str]:
         """Fields filled from, or requested through, the channel's phone number (FR-032)."""
         return [n for n, f in self.fields.items() if f.channel_phone]
+
+    def channel_name_fields(self) -> list[str]:
+        """Fields pre-filled from the chat app's profile name (FR-033)."""
+        return [n for n, f in self.fields.items() if f.channel_name]
 
     def pii_fields(self) -> set[str]:
         """Field names whose values must never appear in logs."""

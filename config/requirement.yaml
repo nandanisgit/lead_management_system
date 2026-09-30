@@ -76,12 +76,15 @@ lists:
 # channel_phone:   true = filled from the chat app when it knows the tutee's number
 #                  (WhatsApp); otherwise asked with the app's "share phone number"
 #                  button where it has one (Telegram) — FR-032
+# channel_name:    true = filled from the chat app's profile name (WhatsApp/Telegram), so
+#                  the tutee isn't asked; shown in the summary so they can correct it — FR-033
 fields:
   contact_name:
     type: text
     min_length: 1
     max_length: 60
     required: true
+    channel_name: true
     pii: true
     label: {en: your name, hi: aapka naam}
     ask: {en: "May I know your name?", hi: "Aapka naam kya hai?"}
@@ -368,6 +371,7 @@ summary:
       range: "₹{min}–{max} {unit}"
   lines:
     en:
+      - "• Contact: {contact_name}[, {phone}]"
       - "• {student_name}, {grade_level}[ {board}]"
       - "• {subjects}"
       - "• {mode}[ — {area}, {city}]"
@@ -375,6 +379,7 @@ summary:
       - "• Budget {budget}"
       - "[• Parent/guardian: {guardian_name} ({guardian_relationship})]"
     hi:
+      - "• Contact: {contact_name}[, {phone}]"
       - "• {student_name}, {grade_level}[ {board}]"
       - "• {subjects}"
       - "• {mode}[ — {area}, {city}]"

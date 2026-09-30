@@ -161,14 +161,21 @@ class Engine:
         return {name: phone for name in self.schema.channel_phone_fields()} if phone else {}
 
     def _channel_fields(self, turn: Turn, req: Requirement) -> dict:
-        """FR-032: when the channel address is the tutee's number (WhatsApp), use it as-is."""
-        if not self.sv.channel.capabilities.contact_is_phone:
-            return {}
-        return {
-            name: turn.contact.wa_number
-            for name in self.schema.channel_phone_fields()
-            if req.get(name) in (None, "")
-        }
+        """Values the chat app already knows, used instead of asking.
+
+        FR-032: the phone number, when the channel address is one (WhatsApp).
+        FR-033: the name, from the app's profile name (the one the greeting used).
+        Only fills fields still empty; the tutee sees both in the summary and can correct them.
+        """
+        known: dict[str, str] = {}
+        if self.sv.channel.capabilities.contact_is_phone:
+            for name in self.schema.channel_phone_fields():
+                known[name] = turn.contact.wa_number
+        profile = (turn.contact.wa_profile_name or "").strip()
+        if profile:
+            for name in self.schema.channel_name_fields():
+                known[name] = profile
+        return {k: v for k, v in known.items() if req.get(k) in (None, "")}
 
     def _tap_fields(self, taps: list[str]) -> dict:
         """Field values chosen by tapping a field button ("<field>:<value>")."""
