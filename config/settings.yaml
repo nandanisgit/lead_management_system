@@ -23,6 +23,7 @@ llm:
   max_concurrent_calls: 20            # protects rate limits during bursts
   skip_for_deterministic_turns: true  # button taps, greeting/consent, summary, closing use fixed texts
   max_regenerations: 1                # then fall back to the fixed text for the instruction
+  require_grounding: true             # keep only values the tutee actually said (drop invented ones)
   stub_delay_seconds: [1.0, 3.0]      # StubLLMClient delay range (load tests)
   # --- Ollama (provider: ollama): free, runs on your own machine. `ollama pull <model>` first ---
   ollama:

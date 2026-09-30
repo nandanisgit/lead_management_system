@@ -77,6 +77,7 @@ class LLMSettings(BaseModel):
     max_concurrent_calls: PositiveInt
     skip_for_deterministic_turns: bool
     max_regenerations: int = Field(ge=0)
+    require_grounding: bool
     stub_delay_seconds: tuple[float, float]
     ollama: OllamaSettings
 

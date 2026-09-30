@@ -2,7 +2,10 @@ from tests.integration.harness import Harness, ext
 
 
 async def _student_to_guardian(h, **signals):
-    await h.say("hi i need maths tuition")
+    await h.say(
+        "hi i am Aarav, a student in class 9 CBSE, i need maths tuition online in the "
+        "evenings, asap, budget 500 per hour"
+    )
     h.script(
         ext(
             relationship="student",
@@ -42,7 +45,10 @@ async def test_student_alone_is_asked_for_guardian_and_flagged(session_factory):
 
 async def test_parent_for_class_9_child_not_asked_for_guardian(session_factory):
     h = Harness(session_factory)
-    await h.say("need tutor for my daughter")
+    await h.say(
+        "I'm Priya, need an online maths tutor for my daughter Riya, class 9 CBSE, "
+        "evenings, asap, budget 500 per hour"
+    )
     h.script(
         ext(
             relationship="parent",
@@ -64,7 +70,10 @@ async def test_parent_for_class_9_child_not_asked_for_guardian(session_factory):
 
 async def test_model_signal_alone_triggers_rule(session_factory):
     h = Harness(session_factory)
-    await h.say("hello")
+    await h.say(
+        "hello, I'm Kabir, asking for my other cousin Kabir, undergraduate, online maths, "
+        "evenings, asap, 500 per hour"
+    )
     h.script(
         ext(
             relationship="other",

@@ -14,7 +14,7 @@ async def test_profile_name_is_used_and_not_asked(session_factory):
 
 async def test_summary_shows_contact_name_and_phone(session_factory):
     h = Harness(session_factory)
-    await h.say("Hi, need a maths tutor", profile_name="Nandani")
+    await h.say("Hi, need a maths tutor for my son", profile_name="Nandani")
     h.script(ext(subjects=["Maths"], relationship="parent"))
     await h.say(choice="consent:yes")
     h.script(ext(student_name="Aarav", grade_level="Class 8", board="CBSE"))
@@ -29,7 +29,7 @@ async def test_summary_shows_contact_name_and_phone(session_factory):
 
 async def test_name_the_tutee_gives_wins(session_factory):
     h = Harness(session_factory)
-    await h.say("Hi, need a maths tutor", profile_name="Nandu 🌸")
+    await h.say("Hi, I'm Nandani Kumari, need a maths tutor for my son", profile_name="Nandu 🌸")
     h.script(ext(subjects=["Maths"], contact_name="Nandani Kumari", relationship="parent"))
     await h.say(choice="consent:yes")
     h.script(ext(student_name="Aarav", grade_level="Class 8", board="CBSE"))

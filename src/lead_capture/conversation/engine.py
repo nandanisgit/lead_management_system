@@ -17,7 +17,7 @@ from sqlalchemy import update
 from sqlalchemy.orm import Session
 
 from lead_capture.conversation import fixed_texts as ft
-from lead_capture.conversation import guards, planner, summary
+from lead_capture.conversation import grounding, guards, planner, summary
 from lead_capture.conversation.minors import update_minor_flags
 from lead_capture.conversation.states import CloseReason, State, transition
 from lead_capture.domain.hours import format_ist, when_team_contacts
@@ -170,6 +170,15 @@ class Engine:
         """True when every message is a tap or a shared phone number (nothing to interpret)."""
         return all(self._is_tap(i) or i.shared_phone for i in items)
 
+    @staticmethod
+    def _typed_consent(items) -> str | None:
+        """A plain typed yes/no to the consent question (config: consent_words)."""
+        texts = [i.text for i in items if i.type == "text" and i.text]
+        if len(texts) != len(items):
+            return None
+        answers = {ft.typed_consent(t) for t in texts}
+        return answers.pop() if len(answers) == 1 else None
+
     def _deterministic(self, items) -> bool:
         """Taps and shared numbers need no model when the cost-saving setting is on."""
         return self.cfg.llm.skip_for_deterministic_turns and self._only_structured(items)
@@ -289,6 +298,15 @@ class Engine:
             turn.model_failed = True
             return ExtractionResult()
         queries.record_usage(db, turn.conv.id, "extract", result.usage)
+        if self.cfg.llm.require_grounding and result.fields:
+            said = [ln.text for ln in ctx.transcript if ln.role == "tutee"]
+            kept, dropped = grounding.grounded(self.schema, result.fields, said)
+            if dropped:  # field names only — never values (FR-027)
+                log.info(
+                    "ungrounded_fields",
+                    extra={"conversation_id": turn.conv.id, "fields": ",".join(dropped)},
+                )
+            result = result.model_copy(update={"fields": kept})
         return result
 
     def _apply(self, conv: Conversation, req: Requirement, fields: dict):
@@ -325,6 +343,8 @@ class Engine:
             consent = "given" if "consent:yes" in taps else "declined"
         elif not taps and self._only_structured(turn.items):  # a shared number: no answer yet
             consent = "none"
+        elif typed := self._typed_consent(turn.items):  # "yes", "haan", "no" — no model needed
+            consent = typed
         else:
             extraction = await self._extract(db, turn, Requirement())
             consent = extraction.signals.consent
@@ -372,8 +392,20 @@ class Engine:
                 extraction = await self._extract(db, turn, req)
         extraction = extraction or ExtractionResult()
         short = {}
-        if not deterministic and not after_consent and not extraction.fields:
+        asked_now = set(self._asked(turn, req))
+        if not deterministic and not after_consent and not (set(extraction.fields) & asked_now):
             short = self._short_answer(turn, req, extraction.signals)
+            if short:  # the model filed the answer elsewhere (e.g. a city under notes): drop that
+                answer = str(next(iter(short.values()))).strip().lower()
+                extraction = extraction.model_copy(
+                    update={
+                        "fields": {
+                            k: v
+                            for k, v in extraction.fields.items()
+                            if str(v).strip().lower() != answer
+                        }
+                    }
+                )
         # what the tutee said or tapped, plus values the channel itself supplies (FR-032)
         said = {
             **short,

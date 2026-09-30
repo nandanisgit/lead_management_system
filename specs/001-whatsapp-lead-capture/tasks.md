@@ -194,6 +194,10 @@ tested and demonstrated on its own. Every performance/cost number comes from
 - [X] T149 [US1] Commit before every model call so SQLite's write lock is never held while a (slow, local) model thinks — webhooks arriving mid-turn failed with "database is locked"; test with a file database in `tests/integration/test_db_not_locked_during_model_calls.py`
 - [X] T150 [US1] Model failures are not the tutee's fault: on an extraction error/timeout, skip "didn't get that" and the misunderstanding strike, re-ask with the fixed question; Ollama extraction prompt uses a compact field guide instead of the full JSON schema (enforced by `format` anyway); default local model `gemma3:4b`
 
+### Review follow-up (2026-09-30): invented values (constitution II)
+
+- [X] T151 [US1] Grounding check: every model-proposed value must be traceable to the tutee's recent messages (value, label, alias or number, per field type) or it is dropped and logged by field name (`llm.require_grounding`), in `src/lead_capture/conversation/grounding.py`; mode/relationship aliases and level number words ("first standard", "pehli class") in `config/requirement.yaml`; typed consent ("yes", "haan", "no") without a model call (`consent_words` in `config/messages.yaml`); a short reply the model filed under a field that wasn't asked goes to the asked field; tests in `tests/unit/test_grounding.py` and `tests/integration/test_grounding_flow.py`
+
 **Checkpoint**: MVP — a real WhatsApp chat produces a correct `NEW` row; US1 tests and evals pass
 
 ---

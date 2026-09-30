@@ -61,12 +61,20 @@ class CurrencyConfig(_Strict):
     after_amount: list[str]
 
 
+class ConsentWords(_Strict):
+    """Whole-message typed answers to the consent question (no model call needed)."""
+
+    given: list[str]
+    declined: list[str]
+
+
 class Messages(_Strict):
     """Everything in config/messages.yaml."""
 
     texts: dict[str, dict[str, str]]
     time_display_format: str
     choices: dict[str, list[dict[str, str]]]
+    consent_words: ConsentWords
     language: LanguageConfig
     currency: CurrencyConfig
 
@@ -125,6 +133,23 @@ def detect_language(message: str | None) -> str | None:
         return "hi"
     if english > hindi and english >= lang.english.min_tutee_markers:
         return "en"
+    return None
+
+
+def typed_consent(message: str | None) -> str | None:
+    """Return "given" or "declined" for a plain typed yes/no (config), else None."""
+    words = " ".join(re.findall(r"[^\W_]+", (message or "").lower()))
+    if not words:
+        return None
+    consent = get_messages().consent_words
+    titles = [c.get(k, "") for c in get_messages().choices.get("consent", []) for k in ("en", "hi")]
+    given = {" ".join(re.findall(r"[^\W_]+", w.lower())) for w in consent.given}
+    given |= {" ".join(re.findall(r"[^\W_]+", t.lower())) for t in titles[:2]}
+    declined = {" ".join(re.findall(r"[^\W_]+", w.lower())) for w in consent.declined}
+    if words in given:
+        return "given"
+    if words in declined:
+        return "declined"
     return None
 
 

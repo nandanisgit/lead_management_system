@@ -81,6 +81,8 @@ class Numbered(_Strict):
     format: str
     min: int
     max: int
+    words: str | None = None  # list of number words ("first", "pehli") → number
+    level_words: list[str] = Field(default_factory=list)  # "class", "standard", "grade"…
 
 
 class CopyFrom(_Strict):

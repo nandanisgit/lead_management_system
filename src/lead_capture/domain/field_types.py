@@ -93,15 +93,32 @@ def _grade(spec: FieldSpec, raw: Any, schema: RequirementSchema) -> str:
     except InvalidValue:
         pass
     if spec.numbered:
-        match = _NUMBERED.fullmatch(str(raw).strip().lower())
-        if match:
-            token = match.group(1)
-            n = int(token) if token.isdigit() else _ROMAN.get(token)
-            if n and spec.numbered.min <= n <= spec.numbered.max:
-                value = spec.numbered.format.format(n=n)
-                if value in schema.options(spec.name):
-                    return value
+        n = _level_number(spec, str(raw).strip().lower(), schema)
+        if n and spec.numbered.min <= n <= spec.numbered.max:
+            value = spec.numbered.format.format(n=n)
+            if value in schema.options(spec.name):
+                return value
     raise InvalidValue("unknown class/level")
+
+
+def _level_number(spec: FieldSpec, text: str, schema: RequirementSchema) -> int | None:
+    """The level number in "9th", "class IX", "1 class", "first standard", "pehli kaksha"."""
+    match = _NUMBERED.fullmatch(text)
+    if match:
+        token = match.group(1)
+        return int(token) if token.isdigit() else _ROMAN.get(token)
+    words = re.findall(r"[^\W_]+", text)
+    level_words = {w.lower() for w in spec.numbered.level_words}
+    if not words or len(words) > 3 or not (set(words) & level_words or len(words) == 1):
+        return None  # only short level phrases, e.g. not a whole sentence
+    number_words = schema.lists.get(spec.numbered.words or "", {}) or {}
+    for word in words:
+        suffix = re.fullmatch(r"(\d{1,2})(?:st|nd|rd|th)?", word)
+        if suffix:
+            return int(suffix.group(1))
+        if word in number_words:
+            return int(number_words[word])
+    return None
 
 
 def _int(raw: Any) -> int:

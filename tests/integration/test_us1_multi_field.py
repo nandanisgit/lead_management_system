@@ -3,7 +3,9 @@ from tests.integration.harness import Harness, ext
 
 async def test_one_message_with_many_details_asks_only_whats_missing(session_factory):
     h = Harness(session_factory)
-    await h.say("Class 9 CBSE maths and science, home tuition in Dwarka, weekday evenings")
+    await h.say(
+        "Class 9 CBSE maths and science for my son, home tuition in Dwarka, Delhi, weekday evenings"
+    )
     h.script(
         ext(
             grade_level="Class 9",

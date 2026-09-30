@@ -87,6 +87,14 @@ choices:
     - {id: "confirm:yes", en: "Confirm", hi: "Haan, sahi hai"}
     - {id: "confirm:change", en: "Change", hi: "Kuch badalna hai"}
 
+# Typed consent answers understood without the model (the whole message, ignoring case
+# and punctuation). Anything else goes to the model.
+consent_words:
+  given: ["yes", "yes please", "yes go ahead", "go ahead", "ok", "okay", "sure", "haan",
+          "han", "ha", "haan ji", "ji haan", "theek hai", "thik hai", "haan aage badhein",
+          "you can save my details"]
+  declined: ["no", "no thanks", "nahi", "nahin", "na", "mat karo"]
+
 # Local language detection (every turn, in code — the model does not choose the reply
 # language) and the reply-language guard. Words are matched as whole words, case-insensitively.
 language:

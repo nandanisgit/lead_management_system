@@ -20,7 +20,7 @@ async def test_timeout_reasks_the_question_without_a_strike(session_factory):
 
 async def test_short_answer_still_captured_when_the_model_fails(session_factory):
     h = Harness(session_factory)
-    await h.say("Hi, I need a maths tutor")
+    await h.say("Hi, I'm Priya, I need a maths tutor for my son")
     h.script(ext(subjects=["Maths"], contact_name="Priya", relationship="parent"))
     await h.say(choice="consent:yes")
     h.llm._timeout = True

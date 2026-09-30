@@ -29,6 +29,14 @@ lists:
                         Class 8, Class 9, Class 10, Class 11, Class 12]
   minor_grade_levels: [Class 1, Class 2, Class 3, Class 4, Class 5, Class 6, Class 7,
                        Class 8, Class 9, Class 10, Class 11, Class 12]      # FR-029
+  # number words for levels: "first standard", "pehli class" → Class 1
+  number_words: {one: 1, first: 1, ek: 1, pehli: 1, pehla: 1, two: 2, second: 2, doosri: 2,
+                 dusri: 2, three: 3, third: 3, teen: 3, teesri: 3, four: 4, fourth: 4, chaar: 4,
+                 chauthi: 4, five: 5, fifth: 5, paanch: 5, paanchvi: 5, six: 6, sixth: 6,
+                 chhathi: 6, seven: 7, seventh: 7, saat: 7, saatvi: 7, eight: 8, eighth: 8,
+                 aath: 8, aathvi: 8, nine: 9, ninth: 9, nau: 9, nauvi: 9, ten: 10, tenth: 10,
+                 das: 10, dasvi: 10, eleven: 11, eleventh: 11, gyarah: 11, gyarahvi: 11,
+                 twelve: 12, twelfth: 12, barah: 12, barahvi: 12}
   grade_aliases: {ug: Undergraduate, undergrad: Undergraduate, college: Undergraduate,
                   graduation: Undergraduate, pg: Postgraduate, postgrad: Postgraduate,
                   masters: Postgraduate, adult: Adult}
@@ -50,13 +58,27 @@ lists:
   ncr_pin_ranges: [[110001, 110099], [201001, 201019], [201301, 201318], [122001, 122018],
                    [122050, 122052], [121001, 121013]]
   modes: [online, home, either]
+  mode_aliases: {offline: home, home tuition: home, home tutor: home, at home: home,
+                 ghar: home, ghar par: home, tutor at home: home, virtual: online,
+                 video: online, video call: online, zoom: online, both: either,
+                 any: either, koi bhi: either, dono: either}
   budget_units: [per_hour, per_month]
   budget_unit_aliases: {per hour: per_hour, hourly: per_hour, hour: per_hour,
                         an hour: per_hour, /hr: per_hour, per hr: per_hour,
                         per month: per_month, monthly: per_month, month: per_month,
                         a month: per_month, /month: per_month, per mo: per_month}
   relationships: [parent, student, other]
+  # how people say it: "for my son" → parent, "myself" → student
+  relationship_aliases: {son: parent, daughter: parent, my son: parent, my daughter: parent,
+                         my child: parent, my kid: parent, my kids: parent, children: parent,
+                         mother: parent, father: parent, mom: parent, mum: parent, dad: parent,
+                         mummy: parent, papa: parent, beta: parent, beti: parent,
+                         bachcha: parent, bacche: parent, guardian: parent, myself: student,
+                         for myself: student, i am a student: student, "i'm a student": student,
+                         main student: student}
   guardian_relationships: [mother, father, guardian, other]
+  guardian_aliases: {mom: mother, mum: mother, mummy: mother, maa: mother, mummi: mother,
+                     dad: father, papa: father, pitaji: father, daddy: father}
   goals: [Board exam prep, Concept clarity, Homework help, Competitive exam (JEE),
           Competitive exam (NEET), Olympiad, Spoken English, Other]
   asap_words: [asap, immediately, now, right away, as soon as possible, abhi, turant]
@@ -105,6 +127,7 @@ fields:
   relationship:
     type: choice
     options: [relationships]
+    option_aliases: relationship_aliases
     required: true
     label: {en: parent or student, hi: parent ya student}
     ask: {en: "Are you the parent or the student?", hi: "Aap parent hain ya student?"}
@@ -126,7 +149,8 @@ fields:
     type: grade
     options: [grade_levels]
     option_aliases: grade_aliases
-    numbered: {format: "Class {n}", min: 1, max: 12}   # "9th", "class IX", "std 9" → Class 9
+    numbered: {format: "Class {n}", min: 1, max: 12,   # "9th", "class IX", "std 9" → Class 9
+               words: number_words, level_words: [class, std, standard, grade, kaksha]}
     required: true
     label: {en: class, hi: class}
     ask: {en: "Which class or level is[ {student_name}] in?",
@@ -165,6 +189,7 @@ fields:
   mode:
     type: choice
     options: [modes]
+    option_aliases: mode_aliases
     required: true
     buttons: [modes]
     option_labels:
@@ -312,6 +337,7 @@ fields:
   guardian_relationship:
     type: choice
     options: [guardian_relationships]
+    option_aliases: guardian_aliases
     required: {when: {flag: minor_alone}}
     label: {en: how they're related, hi: rishta}
     ask: {en: "How are they related to you — mother, father or guardian?",

@@ -2,7 +2,9 @@ from tests.integration.harness import Harness, ext
 
 
 async def _to_budget(h, lang="en"):
-    await h.say("need tutor")
+    await h.say(
+        "I'm Priya, my son Aarav is in class 8 CBSE, needs a maths tutor online, evenings, asap"
+    )
     h.script(
         ext(
             lang,

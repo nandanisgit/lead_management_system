@@ -2,7 +2,7 @@ from tests.integration.harness import Harness, ext
 
 
 async def _consented(h):
-    await h.say("need a tutor")
+    await h.say("need a tutor for my son")
     h.script(ext(relationship="parent"))
     await h.say(choice="consent:yes")
 
